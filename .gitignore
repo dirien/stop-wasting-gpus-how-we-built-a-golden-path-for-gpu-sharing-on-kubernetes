@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Per-session AI tooling
+.claude/
+
+# Pulumi local state (already covered inside infra/ but defensive)
+.pulumi/
