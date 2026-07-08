@@ -94,11 +94,11 @@ const systemNodeGroup = new eks.ManagedNodeGroup("system-nodes", {
 // GPU Node Group - p4d.24xlarge (8x A100 40GB) targeting an AWS Capacity Block.
 // A100 40GB MIG profiles: 1g.5gb, 2g.10gb, 3g.20gb, 7g.40gb
 // all-balanced layout = 2x 1g.5gb + 1x 2g.10gb + 1x 3g.20gb (matches our 3 demo pods)
-// Capacity Block cr-085916fd734a060cd is in us-west-2b, valid 2026-05-12 22:38 UTC
-// through 2026-05-13 11:30 UTC. capacityType=CAPACITY_BLOCK + Launch Template
+// Capacity Block cr-023d2c9020e542f3b is in us-east-2a, valid 2026-07-08 11:30 UTC
+// through 2026-07-09 11:30 UTC. capacityType=CAPACITY_BLOCK + Launch Template
 // pinning to the reservation guarantees the node lands.
 
-// Pin the GPU MNG to the single private subnet in us-west-2b (where the block lives).
+// Pin the GPU MNG to the single private subnet in us-east-2a (where the block lives).
 const gpuSubnetIds = vpc.privateSubnetIds.apply(async (ids) => {
     const results = await Promise.all(
         ids.map(async (id) => {
@@ -106,7 +106,7 @@ const gpuSubnetIds = vpc.privateSubnetIds.apply(async (ids) => {
             return { id, az: s.availabilityZone };
         }),
     );
-    return results.filter((s) => s.az === "us-west-2b").map((s) => s.id);
+    return results.filter((s) => s.az === "us-east-2a").map((s) => s.id);
 });
 
 // Launch template targeting the Capacity Block reservation.
@@ -123,7 +123,7 @@ const gpuLaunchTemplate = new aws.ec2.LaunchTemplate("gpu-cb-lt", {
     },
     capacityReservationSpecification: {
         capacityReservationTarget: {
-            capacityReservationId: "cr-085916fd734a060cd",
+            capacityReservationId: "cr-023d2c9020e542f3b",
         },
     },
     blockDeviceMappings: [{

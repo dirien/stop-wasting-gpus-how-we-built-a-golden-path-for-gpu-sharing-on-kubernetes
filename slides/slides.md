@@ -5,7 +5,7 @@ info: |
   Stop Wasting GPUs: How We Built a Golden Path for GPU Sharing on Kubernetes.
   Engin Diri — Pulumi.
 
-  KCD Texas, May 15 2026.
+  London Platform User Group (LOPUG), July 8 2026.
 
   Repo: https://github.com/dirien/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes
 transition: slide-left
@@ -28,8 +28,8 @@ defaults:
     How we built a golden path for GPU sharing on Kubernetes.
   </p>
   <p class="!mt-10 !text-[1.8rem] text-[var(--p-fg-muted)] !m-0 !leading-relaxed">
-    Engin Diri · Sr. Solutions Architect, Pulumi<br/>
-    KCD Texas · May 15, 2026
+    Engin Diri · Principal Solutions Architect, Pulumi<br/>
+    London Platform User Group (LOPUG) · July 8, 2026
   </p>
 </div>
 
