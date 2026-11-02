@@ -1,0 +1,20 @@
+{
+  "name": "stop-wasting-gpus",
+  "version": "0.1.0",
+  "description": "Why Are You Still Wasting Whole GPUs? Hardware-Level Sharing, Scheduled with DRA (KubeCon NA 2026)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "slidev slides.md --open",
+    "build": "slidev build slides.md",
+    "export": "slidev export slides.md"
+  },
+  "devDependencies": {
+    "@iconify-json/mdi": "^1.2.3",
+    "@pulumi/slidev-theme": "^0.4.0",
+    "@slidev/cli": "^0.50.0",
+    "@slidev/client": "^0.50.0",
+    "@slidev/types": "^0.50.0",
+    "vue": "^3.5.13"
+  }
+}
