@@ -1,290 +1,369 @@
-# Live demo runbook — London Platform User Group (LOPUG), July 8 2026
+# Live demo runbook: KubeCon NA 2026, Salt Lake City
 
-Copy-paste-ready commands for the live segment. Tested against tonight's
-cluster on the us-east-2 Capacity Block `cr-023d2c9020e542f3b`
-(p4d.24xlarge, 8× A100 40GB, us-east-2a). Block is live
-**2026-07-08 11:30 UTC → 2026-07-09 11:30 UTC** — the cluster dies when it expires.
+**Talk:** "Why Are You Still Wasting Whole GPUs? Hardware-Level Sharing, Scheduled with DRA"
+**Slot:** Tue Nov 10, 2026, 4:40–5:10 PM MST (UTC-7)
+**Deck:** `slides-kubecon-na-2026/`. Demo slides: the divider "Live: one GPU, three pods", two terminal slides, the Grafana slide, the recording slide.
 
-> Live values (node name, GPU UUID, Grafana IP, MIG UUIDs) below were captured
-> from the running cluster after `pulumi up`. They are the real values for
-> tonight — but re-run the smoke test (§0c) before you go on stage in case a
-> pod was rescheduled.
+The live demo is optional. The recording (`slides-kubecon-na-2026/public/demo.mp4`, 82s) shows exactly the same commands. If anything in section 3 goes wrong, skip to the recording slide.
+
+What the demo shows, in this order:
+
+1. The GPU: which MIG profiles it supports, and which slices exist right now.
+2. Which pod asked for which request of the shared ResourceClaim, and which slice each request got.
+3. Proof from inside the pods: same GPU UUID, different MIG UUIDs.
+4. A real request through agentgateway and the llm-d endpoint picker, served from a 1g slice.
+5. Grafana: training and both vLLM slices busy on one GPU.
 
 ---
 
-## 0. One-time terminal setup (do this BEFORE the talk starts)
+## 1. Days before: get a GPU and deploy
 
-### 0a. Refresh the kubeconfig
+### 1.1 Capacity
 
-The kubeconfig uses `aws eks get-token`, so it needs AWS creds in the shell.
-Regenerate it from the live stack:
+All commands run on your laptop, from `infra/`. AWS credentials come from ESC:
 
 ```bash
 cd /Users/dirien/Tools/repos/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes/infra
-pulumi stack output kubeconfig --show-secrets --json \
-  | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" \
-  > /tmp/kubeconfig
-ls -la /tmp/kubeconfig   # sanity: ~2 KB
+pulumi stack select kubecon
 ```
 
-### 0b. Open the demo shell (AWS creds + KUBECONFIG wired in)
+The demo uses one `g7e.4xlarge` (1x RTX PRO 6000 Blackwell 96GB, MIG `all-balanced` = 1x 2g.48gb + 2x 1g.24gb, about $4/h).
+A100/H100 on-demand capacity was gone in Nov 2026; the story on the slides doesn't depend on the card.
 
-Every command in §1 runs *inside* this subshell — no `pulumi env run …` prefix needed.
+The reservation in `Pulumi.kubecon.yaml` (`cr-07354aebb1a0c5a89`) ends 2026-11-03T17:00Z, so for the talk you need new capacity. Two options:
+
+**Option A: let Pulumi reserve it (fails fast if the AZ is dry).** Edit `Pulumi.kubecon.yaml`:
+
+```yaml
+  gpu-dra-blog-test:gpuInstanceType: g7e.4xlarge
+  gpu-dra-blog-test:gpuCapacityType: ON_DEMAND_RESERVATION
+  gpu-dra-blog-test:gpuAvailabilityZone: us-east-1b
+  # remove gpu-dra-blog-test:capacityReservationId
+```
+
+**Option B: plain on-demand**, pinned to an AZ: set `gpuCapacityType: ON_DEMAND`, keep `gpuAvailabilityZone`, remove `capacityReservationId`. If the node group times out with `InsufficientInstanceCapacity`, try another AZ. In Nov 2026 the type was offered in `us-east-1b`, `us-east-1c` and `us-east-1d`.
+
+Check that the AZ offers the type at all:
 
 ```bash
+pulumi env run ediri/pulumi-idp/auth -- aws ec2 describe-instance-type-offerings --region us-east-1 \
+  --location-type availability-zone --filters Name=instance-type,Values=g7e.4xlarge \
+  --query 'InstanceTypeOfferings[].Location' --output text
+```
+
+### 1.2 Deploy
+
+```bash
+pulumi preview --policy-pack ./mig-policy   # the MIG policy pack must pass
+pulumi up
+```
+
+Budget about 30 minutes: EKS, the GPU node, GPU Operator with MIG Manager, DRA driver, Prometheus/Grafana, Gateway API + agentgateway, the llm-d router, two vLLM replicas and the training pod.
+
+### 1.3 Verify the deploy
+
+Set up the shell first (section 2.1), then:
+
+```bash
+# MIG applied
+kubectl get nodes -l node-role=gpu -L nvidia.com/mig.config,nvidia.com/mig.config.state
+#   -> all-balanced   success
+
+# DRA driver publishes three MIG devices (not just gpu-0)
+kubectl get resourceslices -o jsonpath='{range .items[*].spec.devices[*]}{.name}{"\n"}{end}'
+#   -> gpu-0-mig-2g48gb-…, gpu-0-mig-1g24gb-…, gpu-0-mig-1g24gb-…
+
+# Workloads
+kubectl get pods -n mig-test                      # 5 pods, all 1/1 Running
+kubectl get resourceclaim -n mig-test             # shared-mig-claim  allocated,reserved
+kubectl get gateway,httproute,inferencepool -n mig-test
+```
+
+If the ResourceSlice shows only `gpu-0`, see section 5, "Pods Pending".
+
+---
+
+## 2. Before the talk (T-60 min)
+
+### 2.1 Demo shell
+
+```bash
+cd /Users/dirien/Tools/repos/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes/infra
+pulumi stack output kubeconfig -s kubecon --show-secrets --json \
+  | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" > /tmp/kubeconfig
+
 pulumi env run ediri/pulumi-idp/auth -- env KUBECONFIG=/tmp/kubeconfig bash
 ```
 
-### 0c. Smoke-test (still in the demo shell) — bail to §3 if anything's red
+Inside that shell:
 
 ```bash
-kubectl get nodes
-kubectl get pods -n mig-test
-kubectl get resourceclaim -n mig-test
+export PS1='$ '
+GW=$(kubectl get gateway llm-d-inference-gateway -n mig-test -o jsonpath='{.status.addresses[0].value}')
+echo $GW
 ```
 
-Expected:
-- 3 nodes (2 system + 1 GPU), all `Ready`
-- 3 pods `1/1 Running` in `mig-test`
-- `shared-mig-claim` in state `allocated,reserved`
+Terminal: dark theme, font size 20+ so the back row can read it, window wide enough for about 130 columns (the ResourceSlice and custom-columns lines are long).
 
-> If the 3 pods are `Pending` and the claim is `pending`, it's the post-reboot
-> DRA race — jump to §3, run the one-liner, wait 30s. Happened on this deploy.
+### 2.2 Smoke test and warm-up
 
----
-
-## 1. The live segment (slide 16 commands)
-
-Run these *in order* during the demo, while talking. Pacing notes in italics.
-
-### 1.1 The GPU node — *"One node. Kubernetes 1.35."*
+Each replica serves Qwen3-8B in FP8 on its 1g.24gb slice (8.85GiB of weights, ~10.5GiB of KV cache, 32k context). Startup compiles and captures CUDA graphs, so requests are fast from the first one; a quick warm-up still proves both replicas answer:
 
 ```bash
-kubectl get nodes -l node-role=gpu
+for i in 1 2 3 4 5 6; do
+  curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' http://$GW/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"Qwen/Qwen3-8B-FP8\",\"max_tokens\":5,\"messages\":[{\"role\":\"user\",\"content\":\"warm-up $i\"}]}"
+done
 ```
 
-Expected output (AGE will read ~5h by demo time):
-```
-NAME                                       STATUS   ROLES    AGE   VERSION
-ip-10-0-35-60.us-east-2.compute.internal   Ready    <none>   5h    v1.35.6-eks-7d6f6ec
-```
+Expected: `200` everywhere, each well under 1s.
 
-### 1.2 The three pods — *"Three different-sized workloads. All running. Each thinks it owns a GPU."*
+### 2.3 Grafana
 
 ```bash
-kubectl get pods -n mig-test
-```
-
-Expected:
-```
-NAME                      READY   STATUS    RESTARTS   AGE
-mig-large-training-pod    1/1     Running   0          5h
-mig-medium-training-pod   1/1     Running   0          5h
-mig-small-inference-pod   1/1     Running   0          5h
-```
-
-### 1.3 The shared ResourceClaim — *"One ResourceClaim, three requests, one constraint."*
-
-```bash
-kubectl get resourceclaim -n mig-test
-```
-
-Expected:
-```
-NAME               STATE                AGE
-shared-mig-claim   allocated,reserved   5h
-```
-
-### 1.4 The matchAttribute constraint — *"This is the line that pins them all to one GPU."* (optional, if asked)
-
-```bash
-kubectl get resourceclaim shared-mig-claim -n mig-test -o jsonpath='{.spec.devices.constraints}' | python3 -m json.tool
-```
-
-Expected:
-```json
-[
-    {
-        "matchAttribute": "gpu.nvidia.com/parentUUID",
-        "requests": ["mig-large", "mig-medium", "mig-small"]
-    }
-]
-```
-
-### 1.5 The keeper moment — *"Three pods. Same physical GPU. Different MIG slices."*
-
-```bash
-# Three literal commands, NOT a for-loop. If this segment is driven through
-# `pulumi env run … -- bash -c '…'` (or Claude Code), Pulumi ESC interpolates
-# ${p} to empty before bash ever sees it, so you get `kubectl exec -pod …` →
-# "unknown shorthand flag: 'p'". Literal pod names are invocation-proof.
-kubectl exec mig-large-training-pod  -n mig-test -- nvidia-smi -L
-kubectl exec mig-medium-training-pod -n mig-test -- nvidia-smi -L
-kubectl exec mig-small-inference-pod -n mig-test -- nvidia-smi -L
-```
-
-Expected (captured live from this cluster — same parent GPU, three MIG slices):
-```
-GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-792fe281-9572-edc7-e6f2-4c560560e705)
-  MIG 3g.20gb     Device  0: (UUID: MIG-264aac46-78a8-5ba5-b310-98568efd5090)
-GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-792fe281-9572-edc7-e6f2-4c560560e705)
-  MIG 2g.10gb     Device  0: (UUID: MIG-f834809e-335d-573a-ad0f-b89906f7b2e4)
-GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-792fe281-9572-edc7-e6f2-4c560560e705)
-  MIG 1g.5gb      Device  0: (UUID: MIG-6063e2fb-083a-5b59-9db1-fed83487d87d)
-```
-
-The **GPU UUID `GPU-792fe281-…` is identical across all three blocks** (same physical A100).
-The **MIG profiles and MIG UUIDs differ** (3g.20gb / 2g.10gb / 1g.5gb). That's the whole talk in one screen.
-
-### 1.6 (Optional) Training is actually running — *"Live loss curve."*
-
-```bash
-kubectl logs -n mig-test mig-large-training-pod --tail=5
-kubectl logs -n mig-test mig-small-inference-pod --tail=5
-```
-
----
-
-## 2. Grafana dashboard (slide 17)
-
-⚠️ The Grafana service name carries a **random Helm-release hash** that changes
-every deploy (this deploy: `kube-prometheus-stack-97a55067-grafana`). **Don't**
-hardcode the name — discover it by label:
-
-```bash
-# Robust: prints the Grafana LoadBalancer URL regardless of the hash
 kubectl get svc -n monitoring -l app.kubernetes.io/name=grafana \
-  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}{"\n"}'
-# user: admin   pass: gpu-monitoring-demo
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}'; echo
+pulumi stack output grafanaPassword -s kubecon     # user: admin
 ```
 
-**Tonight's URL** (captured live — bookmark it before the talk):
-```
-http://aa3da325bcdcd4df986c1a12edd218b5-399910236.us-east-2.elb.amazonaws.com
+Open it in the browser, log in, open **NVIDIA MIG DCGM (demo)** (not the stock "NVIDIA MIG DCGM Exporter Dashboard", which plots utilization as 0–1), set the range to the last 15 minutes and refresh to 10s. Keep the tab open next to the slides.
+
+### 2.4 Load for the Grafana slide
+
+Start this in a **second** terminal (same demo shell setup, section 2.1) about 5 minutes before the demo slides, so the vLLM lines are already up when you get there. Different prompts spread the load over both replicas; identical prompts would all go to one replica (prefix-cache routing).
+
+```bash
+for i in $(seq 1 2000); do
+  curl -sS -o /dev/null http://$GW/v1/chat/completions -H 'Content-Type: application/json' \
+    -d "{\"model\":\"Qwen/Qwen3-8B-FP8\",\"max_tokens\":200,\"messages\":[{\"role\":\"user\",\"content\":\"Write a short story about GPU number $i\"}]}" &
+  (( i % 8 == 0 )) && wait
+done
 ```
 
-Log in, then open the dashboard **"NVIDIA MIG DCGM Exporter Dashboard"**
-(folder: **General** — *not* "default", and *not* named "…Dashboard - MIG").
-Direct deep-link for tonight:
-```
-http://aa3da325bcdcd4df986c1a12edd218b5-399910236.us-east-2.elb.amazonaws.com/d/Oxed_c6Wz/nvidia-mig-dcgm-exporter-dashboard
-```
+Stop it with Ctrl-C after the Grafana slide.
 
-Verified live: DCGM target UP, 448 DCGM series, per-MIG memory (`1g.5gb≈35MB`,
-`2g.10gb≈70MB`, `3g.20gb≈106MB`) and engine-activity metrics all present. The
-`mig-small-inference` slice loops continuously so its line stays active; the
-training slices spike intermittently (Fashion-MNIST is small — expect modest,
-not saturated, utilization).
+### 2.5 T-10 min checklist
 
-> Tips:
-> - Open Grafana in a browser tab *before* the talk — the ELB takes ~1–2 min to
->   answer HTTP after creation (verified answering at 200 today).
-> - MIG does **not** expose coarse per-slice `DCGM_FI_DEV_GPU_UTIL` — that panel
->   may read empty. The memory + `GR_ENGINE_ACTIVE` panels are the live ones.
+- [ ] `kubectl get pods -n mig-test`: five pods Running
+- [ ] One curl from 3.4 returns an answer
+- [ ] Grafana tab logged in, lines moving
+- [ ] Recording slide plays (`demo.mp4`)
+- [ ] Notifications off, terminal font big, `clear`
 
 ---
 
-## 3. Recovery scenarios
+## 3. The live segment
 
-### "All 3 pods are Pending"
-DRA driver hasn't seen the MIG slices yet. Restart its kubelet plugin:
+About 3 minutes. Run in order. `clear` between parts so each part fits on one screen; the two terminal slides show the expected output if you need a fallback.
+
+### Part 1: the GPU before any pod
+
+**3.1 The node and its MIG layout**
+
 ```bash
-kubectl delete pod -n nvidia-dra-driver -l nvidia-dra-driver-gpu-component=kubelet-plugin
-# wait 30 seconds
-kubectl get pods -n mig-test
+kubectl get nodes -l node-role=gpu -L nvidia.com/gpu.machine,nvidia.com/mig.config
 ```
 
-### "One pod is on a different GPU than the others"
-Shouldn't happen with `matchAttributes`. Recreate so the scheduler re-allocates:
+```
+NAME                           STATUS   ROLES    AGE   VERSION               GPU.MACHINE   MIG.CONFIG
+ip-10-0-107-255.ec2.internal   Ready    <none>   10h   v1.37.1-eks-6e7947a   g7e.4xlarge   all-balanced
+```
+
+*Say:* "One GPU node. The GPU Operator's MIG Manager read the `all-balanced` label and cut the card."
+
+**3.2 Which MIG profiles the card supports**
+
+```bash
+kubectl exec -n gpu-operator ds/nvidia-mig-manager -c nvidia-mig-manager -- \
+  nvidia-smi mig -lgip | grep -E 'Name|Free/Total|MIG [0-9]g\.[0-9]+gb '
+```
+
+```
+| GPU   Name               ID    Instances   Memory     P2P    SM    DEC   ENC  |
+|                                Free/Total   GiB              CE    JPEG  OFA  |
+|   0  MIG 1g.24gb         14     0/4        23.62      No     46     1     1   |
+|   0  MIG 2g.48gb          5     0/2        47.38      No     94     2     2   |
+|   0  MIG 4g.96gb          0     0/1        95.00      No     188    4     4   |
+```
+
+*Say:* "This card can be cut into up to four 1g.24gb, two 2g.48gb, or one 4g.96gb, which is the whole card. Free is zero because all-balanced already uses it: one 2g plus two 1g."
+
+**3.3 What the DRA driver publishes to the scheduler**
+
+```bash
+kubectl get resourceslices -o jsonpath='{"DEVICE\t\t\tPROFILE\tPARENT GPU\n"}{range .items[*].spec.devices[*]}{.name}{"\t"}{.attributes.profile.string}{"\t"}{.attributes.parentUUID.string}{"\n"}{end}'
+```
+
+```
+DEVICE                  PROFILE PARENT GPU
+gpu-0-mig-2g48gb-5-0    2g.48gb GPU-676c1adb-1b9d-b501-13e6-05cc9b040785
+gpu-0-mig-1g24gb-14-6   1g.24gb GPU-676c1adb-1b9d-b501-13e6-05cc9b040785
+gpu-0-mig-1g24gb-14-9   1g.24gb GPU-676c1adb-1b9d-b501-13e6-05cc9b040785
+```
+
+*Say:* "This is what the scheduler sees: a ResourceSlice with three devices, each with a profile and the same parent UUID. Our claim pins on exactly that attribute."
+
+```bash
+clear
+```
+
+### Part 2: which pod got which slice
+
+**3.4 Pod to request**
+
+```bash
+kubectl get pods -n mig-test -o custom-columns='POD:.metadata.name,NODE:.spec.nodeName,REQUEST:.spec.containers[0].resources.claims[0].request'
+```
+
+```
+POD                                        NODE                           REQUEST
+llm-d-inference-gateway-85bcc65df8-rsbld   ip-10-0-42-66.ec2.internal     <none>
+mig-large-training-pod                     ip-10-0-107-255.ec2.internal   mig-large
+qwen3-epp-5689fc9496-7ntvq                 ip-10-0-42-66.ec2.internal     <none>
+vllm-qwen3-a-6885d59876-n4g85              ip-10-0-107-255.ec2.internal   mig-serve-a
+vllm-qwen3-b-6795466874-jj4n7              ip-10-0-107-255.ec2.internal   mig-serve-b
+```
+
+*Say:* "Three pods on the GPU node, each asking for a different request of one shared ResourceClaim. The gateway and the endpoint picker don't need a GPU and run on the system node."
+
+**3.5 Request to slice**
+
+```bash
+kubectl get resourceclaim shared-mig-claim -n mig-test -o jsonpath='{"REQUEST\t\tDEVICE\n"}{range .status.allocation.devices.results[*]}{.request}{"\t"}{.device}{"\n"}{end}'
+```
+
+```
+REQUEST         DEVICE
+mig-large       gpu-0-mig-2g48gb-5-0
+mig-serve-a     gpu-0-mig-1g24gb-14-6
+mig-serve-b     gpu-0-mig-1g24gb-14-9
+```
+
+*Say:* "And the scheduler's answer: training got the 2g slice, each vLLM replica a 1g slice. All from the ResourceSlice we just saw."
+
+Optional, if someone asks why they all land on one GPU:
+
+```bash
+kubectl get resourceclaim shared-mig-claim -n mig-test -o jsonpath='{.spec.devices.constraints}' | jq
+```
+
+```json
+[{ "matchAttribute": "gpu.nvidia.com/parentUUID", "requests": ["mig-large", "mig-serve-a", "mig-serve-b"] }]
+```
+
+**3.6 The keeper: proof from inside the pods**
+
+```bash
+for t in pod/mig-large-training-pod deploy/vllm-qwen3-a deploy/vllm-qwen3-b; do kubectl exec -n mig-test $t -- nvidia-smi -L; done
+```
+
+```
+GPU 0: NVIDIA RTX PRO 6000 Blackwell Server Edition (UUID: GPU-676c1adb-1b9d-…)
+  MIG 2g.48gb     Device  0: (UUID: MIG-945cb005-…)
+GPU 0: NVIDIA RTX PRO 6000 Blackwell Server Edition (UUID: GPU-676c1adb-1b9d-…)
+  MIG 1g.24gb     Device  0: (UUID: MIG-edf5d3ce-…)
+GPU 0: NVIDIA RTX PRO 6000 Blackwell Server Edition (UUID: GPU-676c1adb-1b9d-…)
+  MIG 1g.24gb     Device  0: (UUID: MIG-9cf287a1-…)
+```
+
+*Say:* "Same GPU UUID three times. Three different MIG UUIDs. One slice trains, two slices serve." Pause here.
+
+```bash
+clear
+```
+
+### Part 3: through the gateway
+
+**3.7 The route and the InferencePool**
+
+```bash
+kubectl get httproute,inferencepool -n mig-test
+```
+
+*Say:* "agentgateway takes the request, the llm-d endpoint picker chooses the replica behind this InferencePool."
+
+**3.8 A real request**
+
+```bash
+curl -sS http://$GW/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"Qwen/Qwen3-8B-FP8","max_tokens":120,"chat_template_kwargs":{"enable_thinking":false},"messages":[{"role":"user","content":"In two sentences: why should teams share one GPU?"}]}' | jq -r '.choices[0].message.content'
+```
+
+Expected: two sentences from Qwen3-8B in about a second, roughly 40 tokens/s on a 1g slice (the wording changes every run).
+
+### Part 4: Grafana
+
+Switch to the Grafana tab (the load from 2.4 is running). Three lines on GPU Utilization: both vLLM slices at about 97%, the training slice dipping from about 61% to about 48% while the two 8B replicas are busy, all on GPU 0. Stay quiet for ten seconds. Back to the slides; stop the load loop.
+
+If someone asks about the training dip, *say:* "The dip is mostly the dashboard. Measured, training loses about 5%, all in its CPU data loader sharing the node with vLLM. The GPU work doesn't change: MIG isolates the GPU, not the host. Fix: num_workers and CPU pinning."
+
+Background (A/B on the demo cluster): GPU-side work on the training slice is the same with and without vLLM load (bf16 matmul 146.2 TFLOPS both ways, device copy 486 vs 480 GB/s, PCIe 50 GB/s, GPU step 155 ms). Real training throughput goes from 3.43 to 3.25 batches/s (about -5%), all of it in the `num_workers=0` DataLoader (137 → 153 ms/batch) competing with vLLM for host CPU. The per-slice DCGM profiling numbers on this card (RTX PRO 6000, driver 580) are not reliable enough to read more into the dip: DRAM_ACTIVE rises on the training slice while the busy vLLM slices report 0, and an idle vLLM slice once reported a constant 17.6%.
+
+---
+
+## 4. Fallbacks during the talk
+
+| Problem | Do this |
+|---|---|
+| Anything hangs for more than 10s | Ctrl-C, go to the recording slide (two slides after the terminal slides) |
+| Wi-Fi is gone | Same: the recording and the terminal slides are local |
+| curl is slow | It is the first request after idle; wait up to 30s or use the recording |
+| Grafana won't load | Use the Grafana slide (screenshot from Nov 2) |
+
+---
+
+## 5. Recovery (not on stage)
+
+### Pods Pending, or the ResourceSlice shows only `gpu-0`
+
+The DRA kubelet plugin started before MIG Manager finished cutting the card. `infra/index.ts` now waits for `nvidia.com/mig.config.state=success`, but if it happens anyway:
+
+```bash
+kubectl rollout restart ds -n dra-driver-nvidia-gpu dra-driver-nvidia-gpu-kubelet-plugin
+kubectl get resourceslices -o jsonpath='{range .items[*].spec.devices[*]}{.name}{"\n"}{end}'
+kubectl get pods -n mig-test -w
+```
+
+### curl returns 5xx or hangs
+
+```bash
+kubectl get pods -n mig-test
+kubectl logs -n mig-test deploy/vllm-qwen3-a --tail=30
+kubectl logs -n mig-test deploy/qwen3-epp --tail=30
+kubectl rollout restart deploy -n mig-test vllm-qwen3-a vllm-qwen3-b   # 8B reload (download, compile, CUDA graphs) takes about 5 min
+```
+
+### Pods on different GPUs
+
+Can't happen with one GPU on the node. On a multi-GPU node, recreate the claim so the scheduler re-allocates:
+
 ```bash
 kubectl delete pod -n mig-test --all
 kubectl delete resourceclaim -n mig-test shared-mig-claim
-cd /Users/dirien/Tools/repos/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes/infra
-pulumi up --yes
+pulumi up    # from infra/, recreates the claim and pods
 ```
 
-### "exec into pod fails"
-The pod may have completed. Check status:
-```bash
-kubectl get pod -n mig-test <pod-name>
-kubectl describe pod -n mig-test <pod-name> | tail -30
-```
+### Re-record the fallback video
 
-### "Grafana / monitoring never comes up" (and `pulumi up` fails on the EBS CSI addon)
-Root cause seen on this deploy: the `ebs-csi-controller` starts **before** its EKS
-Pod Identity association is ready, gets no AWS creds, falls back to IMDS, and
-CrashLoops — so the `aws-ebs-csi-driver` addon never goes ACTIVE, which blocks the
-`gp3` StorageClass and the whole `kube-prometheus-stack` (Grafana). Fix:
-```bash
-kubectl rollout restart deployment ebs-csi-controller -n kube-system
-# wait ~60s → both pods should be 6/6 Running, 0 restarts
-kubectl get pods -n kube-system -l app=ebs-csi-controller
-# then re-run the deploy; the addon flips ACTIVE and Grafana installs
-cd /Users/dirien/Tools/repos/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes/infra
-pulumi up --yes
-```
-
-### "Cluster is completely gone"
-The us-east-2 block expired or was destroyed. It only lives until
-**2026-07-09 11:30 UTC**. To rebuild inside the window:
-```bash
-cd /Users/dirien/Tools/repos/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes/infra
-pulumi up --yes    # ~14 min
-```
-⚠️ Do **NOT** run `switch-to-friday.sh` — it's a dead relic that flips the region
-back to us-west-2 and would break everything.
-
----
-
-## 4. Useful side commands
+From `slides-kubecon-na-2026/`, in the demo shell:
 
 ```bash
-# k9s (TUI) if you prefer to drive interactively
-k9s
-
-# All MIG slices on the A100 (readable from the mig-manager host pod)
-kubectl exec -n gpu-operator $(kubectl get pod -n gpu-operator -l app=nvidia-mig-manager -o name | head -1) -- nvidia-smi -L
-
-# Capacity reservation status
-aws ec2 describe-capacity-reservations --capacity-reservation-ids cr-023d2c9020e542f3b --region us-east-2 \
-  --query 'CapacityReservations[0].{state:State, used:TotalInstanceCount, end:EndDate}'
-
-# Pulumi stack outputs
-pulumi stack output
+vhs demo.tape     # writes public/demo.gif, .mp4, .webm
 ```
 
 ---
 
-## Quick reference card (for the lectern)
+## 6. After the talk
 
-```
-SHELL SETUP:
-  cd .../infra
-  pulumi stack output kubeconfig --show-secrets --json | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin)))" > /tmp/kubeconfig
-  pulumi env run ediri/pulumi-idp/auth -- env KUBECONFIG=/tmp/kubeconfig bash
-
-SLIDE 16 (4 commands, ~2 min):
-  kubectl get nodes -l node-role=gpu
-  kubectl get pods -n mig-test
-  kubectl get resourceclaim -n mig-test
-  kubectl exec mig-large-training-pod  -n mig-test -- nvidia-smi -L
-  kubectl exec mig-medium-training-pod -n mig-test -- nvidia-smi -L
-  kubectl exec mig-small-inference-pod -n mig-test -- nvidia-smi -L
-
-SLIDE 17 (Grafana — name has a per-deploy hash, discover by label):
-  kubectl get svc -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}{"\n"}'
-  # tonight: http://aa3da325bcdcd4df986c1a12edd218b5-399910236.us-east-2.elb.amazonaws.com
-  # admin / gpu-monitoring-demo
-
-RESERVATION: cr-023d2c9020e542f3b  (us-east-2a, expires 2026-07-09 11:30 UTC)
+```bash
+cd /Users/dirien/Tools/repos/stop-wasting-gpus-how-we-built-a-golden-path-for-gpu-sharing-on-kubernetes/infra
+pulumi destroy -s kubecon
 ```
 
----
+The g7e.4xlarge bills about $4/h until it is destroyed. If you reserved capacity by hand (ODCR), cancel it too:
 
-## Optional: drive it through Claude Code
-
-If the Claude Code window is projected, you can also just type trigger phrases and
-Claude runs the sequence with stage-formatted output:
-- **"run the demo"** / **"demo"** — full 4-command sequence
-- **"keeper"** — only the for-loop (same parent GPU UUID across three pods)
-- **"slow demo"** — one command at a time; type "next" between each
+```bash
+pulumi env run ediri/pulumi-idp/auth -- aws ec2 describe-capacity-reservations --region us-east-1 \
+  --filters Name=state,Values=active --query 'CapacityReservations[].[CapacityReservationId,InstanceType,EndDate]' --output table
+pulumi env run ediri/pulumi-idp/auth -- aws ec2 cancel-capacity-reservation --region us-east-1 --capacity-reservation-id <id>
+```
