@@ -6,16 +6,24 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "@types/node": "^22",
-        "eslint": "^10.3.0",
-        "typescript": "^6.0.0",
-        "typescript-eslint": "^8.59.2"
+        "@types/mocha": "^10.0.10",
+        "@types/node": "^22.20.5",
+        "@types/shell-quote": "^1.7.5",
+        "eslint": "^10.14.0",
+        "typescript": "~6.0.3",
+        "typescript-eslint": "^8.72.1"
     },
     "dependencies": {
-        "@pulumi/aws": "^7.0.0",
-        "@pulumi/awsx": "^3.1.0",
-        "@pulumi/eks": "^4.2.0",
-        "@pulumi/kubernetes": "^4.30.0",
-        "@pulumi/pulumi": "^3.113.0"
+        "@pulumi/aws": "^7.52.1",
+        "@pulumi/awsx": "^3.12.0",
+        "@pulumi/eks": "^4.5.0",
+        "@pulumi/gateway-networking": "file:sdks/gateway-networking",
+        "@pulumi/kubernetes": "^4.34.2",
+        "@pulumi/prometheus-operator": "file:sdks/prometheus-operator",
+        "@pulumi/pulumi": "^3.273.0"
+    },
+    "allowScripts": {
+        "file:sdks/gateway-networking": true,
+        "file:sdks/prometheus-operator": true
     }
 }

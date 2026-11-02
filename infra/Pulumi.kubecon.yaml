@@ -1,0 +1,11 @@
+environment:
+  - pulumi-idp/auth
+config:
+  # Nov 1: no on-demand p4d/p4de/p5.4xlarge in us-east-1/us-east-2/us-west-2.
+  # A g7e.4xlarge (1x RTX PRO 6000, MIG) was reserved by hand in us-east-1b;
+  # the reservation ends 2026-11-03T17:00Z (a running node keeps running).
+  aws:region: us-east-1
+  gpu-dra-blog-test:gpuInstanceType: g7e.4xlarge
+  gpu-dra-blog-test:gpuCapacityType: ON_DEMAND
+  gpu-dra-blog-test:capacityReservationId: cr-07354aebb1a0c5a89
+  gpu-dra-blog-test:gpuAvailabilityZone: us-east-1b
