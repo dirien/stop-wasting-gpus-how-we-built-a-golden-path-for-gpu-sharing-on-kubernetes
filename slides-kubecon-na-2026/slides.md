@@ -620,7 +620,8 @@ and the scheduler takes the first one it can satisfy:
       selectors: [{cel: {expression: 'device.attributes["gpu.nvidia.com"].profile == "1g.5gb"'}}]
 
 Kueue caveat: Kueue supports ResourceClaimTemplates but not firstAvailable
-in MultiKueue, and not pre-created shared claims (see the gotchas slide).
+in MultiKueue, and not pre-created shared claims (details in the notes of
+"Our next steps after MIG and DRA").
 -->
 
 ---
@@ -816,6 +817,19 @@ Sources:
 
 <!--
 5s. Beat 3 divider. Walk straight into the architecture.
+-->
+
+---
+class: 'meme-slide'
+---
+
+<div class="meme-frame">
+  <img src="/villager-building.gif" alt="Animated: an Age of Empires-style villager hammering away at a wooden build site." />
+</div>
+
+<!--
+~5s. No words. Right after "So we built it." Let it loop once, click.
+GIF source: global.discourse-cdn.com/funcom (forum upload).
 -->
 
 ---
@@ -1273,6 +1287,11 @@ Demo part 1, about 60s: the GPU before any pod. Three questions.
    devices, each with a profile and the same parentUUID. That parentUUID is
    the attribute our shared claim's matchAttribute constraint uses.
 
+Why an RTX PRO 6000 and not an A100/H100: on Nov 1 2026 there was no
+on-demand p4d, p4de or p5.4xlarge in us-east-1, us-east-2 or us-west-2. A
+p4de Capacity Block was about $488, prepaid and non-refundable. The card
+is one config key in the Pulumi stack (gpuInstanceType).
+
 Full command for the ResourceSlice (the slide shortens it):
 kubectl get resourceslices -o jsonpath='{"DEVICE\t\t\tPROFILE\tPARENT GPU\n"}{range .items[*].spec.devices[*]}{.name}{"\t"}{.attributes.profile.string}{"\t"}{.attributes.parentUUID.string}{"\n"}{end}'
 -->
@@ -1365,6 +1384,20 @@ next slide.
 
 Fallback screenshot: public/grafana-mig-climbing.png (recorded Nov 2 2026
 on the RTX PRO 6000 demo cluster, with load through the gateway).
+
+Story if there's time ("dashboards lie"): the stock grafana.com dashboard
+16640 plots DCGM_FI_PROF_GR_ENGINE_ACTIVE, a 0-1 ratio, on a percent axis,
+so 60% showed as 0.6%. We ship a fixed copy (x100) in infra/dashboards/.
+dcgm-exporter 4.8.3 also renamed the Hostname label to hostname, which
+breaks older dashboards.
+
+If asked about the training dip (61% to 48%): mostly the dashboard.
+Measured, training loses about 5%, all in its CPU data loader sharing the
+node with vLLM; the GPU step time doesn't change. See DEMO.md Part 4.
+
+If one vLLM line stays flat: the llm-d endpoint picker scores prefix-cache
+hits, so a load test with one identical prompt pins one replica. Load-test
+with varied prompts.
 -->
 
 ---
@@ -1439,8 +1472,8 @@ this next slide will close. Don't answer it yet. Click into the next steps.
 
 <div class="zoom-content">
 
-<div class="grid grid-cols-[1.35fr_1fr] gap-8 mt-6">
-  <div class="gpu-card gpu-card--accent">
+<div class="grid grid-cols-[1.35fr_1fr] gap-8 mt-14">
+  <div v-click class="gpu-card gpu-card--accent">
     <div class="gpu-caption gpu-caption--accent">Next quarter</div>
     <ul class="!mt-4 !text-[1.1rem] !leading-snug space-y-4">
       <li><strong>Kueue</strong>: MIG quota per team. Answers "whose workload runs first?"</li>
@@ -1451,19 +1484,17 @@ this next slide will close. Don't answer it yet. Click into the next steps.
     </ul>
   </div>
 
-  <div class="gpu-card">
+  <div v-click class="gpu-card">
     <div class="gpu-caption gpu-caption--muted">Options we're watching</div>
     <ul class="!mt-4 !text-[1.1rem] !leading-snug space-y-5">
       <li><strong>KAI Scheduler</strong>: GPU-aware fair share and gang scheduling. CNCF sandbox, v0.18.</li>
       <li><strong>NVIDIA Grove</strong>: multi-pod inference topologies across NVLink. Beta, v0.2.</li>
       <li><strong>KServe</strong> <code>LLMInferenceService</code>: <span class="whitespace-nowrap">llm-d</span> behind one CR.</li>
+      <li><strong>NVIDIA AICR</strong>: validated, version-locked recipes for the GPU stack, with drift checks. Also available as Pulumi provider.</li>
     </ul>
   </div>
 </div>
 
-<p class="!mt-8 !text-[1.25rem] !leading-relaxed text-[var(--p-primary)] !font-semibold text-center">
-  MIG isolates. DRA describes. Kueue admits. The gateway routes.
-</p>
 
 </div>
 
@@ -1474,7 +1505,7 @@ this next slide will close. Don't answer it yet. Click into the next steps.
 <!--
 90s. Answer the Day 30 question from the slide before. The gateway is
 already in the demo (agentgateway + the llm-d endpoint picker); this is
-what comes after it. Walk the left card top
+what comes after it. Two clicks: first the left card, then the right. Walk the left card top
 to bottom, then the right card in one breath.
 
 Next quarter, in order:
@@ -1503,21 +1534,42 @@ Options, each with its maturity:
   in lockstep with Dynamo. Built for NVLink domains, not MIG slices.
 - KServe LLMInferenceService: the managed way to run llm-d if you
   already use KServe.
+- NVIDIA AI Cluster Runtime (AICR), v1.2.0 (Nov 2 2026), Apache 2.0.
+  Known-good, version-locked "recipes" of drivers, operators and K8s
+  settings, rendered as Helm values and manifests for your own tooling
+  ("Not a cluster provisioner"). aicr validate checks a live cluster
+  against the recipe (optional NCCL/performance phases); aicr diff
+  compares snapshots for drift. v1.2.0 ships dra-driver-nvidia-gpu
+  0.5.1, the same as ours. Pulumi provider: nvidia-aicr (Pulumi Labs,
+  v0.3.2, Aug 31 2026), resource ClusterStack(accelerator, service,
+  intent); accepts rtx-pro-6000 and eks.
+  Why only "watching" (Q&A: "are you using it?" -> "Not yet."):
+  - No MIG layout configuration in the recipes we could read. MIG is
+    the core of this talk.
+  - EKS 1.37 not mentioned; nightly runs are on H100, the qualified EKS
+    combo is EKS + H100. RTX PRO 6000 on EKS has no stated support level.
+  - Stock recipes disable whole-GPU DRA; its docs: "Whole-GPU DRA and the
+    GPU Operator device plugin (nvidia.com/gpu) are mutually exclusive
+    per node."
+  - Validation jobs run privileged with cluster-admin: needs a Kyverno
+    exception.
 
-Close on the tagline: "MIG isolates. DRA describes. Kueue admits. The
-gateway routes."
+Close by saying it: "MIG isolates. DRA describes. Kueue admits. The
+gateway routes." (Spoken only; it's no longer on the slide.)
 
 Sources:
 - reports/GPU sharing successor stack.md (research, Oct 31 2026)
 - kubernetes.io/blog/2026/09/08/kubernetes-v1-37-advancing-workload-aware-scheduling/
 - github.com/kai-scheduler/KAI-Scheduler
 - github.com/ai-dynamo/grove/releases/tag/v0.2.0-beta1
+- github.com/NVIDIA/aicr, docs.nvidia.com/aicr,
+  pulumi.com/registry/packages/nvidia-aicr
 -->
 
 ---
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
-  <mdi-elephant class="elephant" />
+  <lucide-lab-elephant class="elephant" />
   <h1 class="!text-[5.5rem] !leading-tight !font-semibold !tracking-tight !m-0 !mt-4 text-[var(--p-primary)]">The elephant in the room.</h1>
   <p class="!mt-8 !text-[2.4rem] !leading-snug">Large, as in <strong class="text-[var(--p-primary)]">Large</strong> Language Model.</p>
 </div>
@@ -1530,6 +1582,20 @@ Sources:
 10s. Say it before someone in Q&A does: "Everything you saw today fits
 on a slice. An 8B model in FP8 with a 32k context runs on a quarter of
 this card. What about the really big ones?" Then click.
+-->
+
+---
+class: 'meme-slide'
+---
+
+<div class="meme-frame">
+  <img src="/address-the-elephant.jpg" alt="An elephant standing in an office among knocked-over chairs, with the caption 'Address me'." />
+</div>
+
+<!--
+~5s. No words. Let the elephant ask for itself, then click into the
+ladder: slice, node, bigger than a node.
+Image source: preview.redd.it (Reddit upload), saved locally.
 -->
 
 ---
@@ -1756,13 +1822,13 @@ Rule of thumb: if one pod's OOM or crash must not touch another, it's MIG.
 <div class="rollout">
   <div v-click class="rcard">
     <div class="rnum">01</div>
-    <div class="rtitle">One MIG layout per node pool</div>
-    <div class="rbody">Set the <code>nvidia.com/mig.config</code> label. MIG Manager carves the card.</div>
+    <div class="rtitle">Pick slice sizes per node pool</div>
+    <div class="rbody">Label the pool, e.g. <code>mig.config=all-balanced</code>. MIG Manager cuts every card the same. Changing it drains the node.</div>
   </div>
   <div v-click class="rcard">
     <div class="rnum">02</div>
-    <div class="rtitle">A DeviceClass per profile</div>
-    <div class="rbody">App teams ask for <code>mig-1g</code> by name. The CEL stays with the platform team.</div>
+    <div class="rtitle">Give each slice size a name</div>
+    <div class="rbody">One DeviceClass per size, e.g. <code>mig-1g-24gb</code>. App teams ask for the name, not a filter expression.</div>
   </div>
   <div v-click class="rcard">
     <div class="rnum">03</div>
@@ -1772,7 +1838,7 @@ Rule of thumb: if one pod's OOM or crash must not touch another, it's MIG.
   <div v-click class="rcard">
     <div class="rnum">04</div>
     <div class="rtitle">Start DRA after MIG</div>
-    <div class="rbody">Schedule the kubelet plugin only where <code>mig.config.state=success</code>.</div>
+    <div class="rbody">Every new GPU node races. Run the DRA plugin only where <code>mig.config.state=success</code>.</div>
   </div>
   <div v-click class="rcard">
     <div class="rnum">05</div>
@@ -1782,7 +1848,7 @@ Rule of thumb: if one pod's OOM or crash must not touch another, it's MIG.
   <div v-click class="rcard">
     <div class="rnum">06</div>
     <div class="rtitle">Bring old manifests along</div>
-    <div class="rbody"><code>nvidia.com/gpu: 1</code> specs are served by DRA via extended resources (GA 1.37).</div>
+    <div class="rbody">The same DeviceClass maps <code>nvidia.com/mig-1g.24gb</code> to a slice (GA in 1.37). Old pods run unchanged.</div>
   </div>
 </div>
 
@@ -1807,30 +1873,59 @@ Rule of thumb: if one pod's OOM or crash must not touch another, it's MIG.
 }
 .rtitle { margin-top: 0.9rem; font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
 .rbody { margin-top: 0.6rem; font-size: 1.12rem; line-height: 1.45; color: var(--p-fg-muted); }
-.rbody code { font-size: 0.95em; }
+.rbody code { font-size: 0.95em; white-space: nowrap; }
 </style>
 
 <!--
 90s. The abstract promises "how to roll it out safely". Six steps, in
 the order we'd do them again. Top row first (1-3), then bottom (4-6).
 
-1. One static MIG layout per node pool. all-balanced is a good default.
-   Changing it later drains the node, so pick per pool, not per pod.
-2. Admin-owned DeviceClasses, one per profile. App teams reference a
-   name; the CEL stays with the platform team.
+1. One static MIG layout per node pool, set with the node label
+   nvidia.com/mig.config (e.g. all-balanced: on our RTX PRO 6000 that is
+   1x 2g.48gb + 2x 1g.24gb). The GPU Operator's MIG Manager reads the
+   label and cuts every card in the pool the same way. Changing it later
+   drains the node, so pick per pool, not per pod. Need other sizes? Add
+   a second pool with a different label.
+   An A100 can't toggle MIG mode without a GPU reset. DynamicMIG (driver
+   Alpha) needs H100+, destroys partitions it didn't create, and can't be
+   combined with MPS or the NVML health checks.
+2. Admin-owned DeviceClasses, one per slice size. The DeviceClass holds
+   the CEL selector (driver, type == mig, profile == 1g.24gb); app teams
+   just write deviceClassName: mig-1g-24gb. Our demo's shared claim still
+   uses the driver's generic mig.nvidia.com class with the CEL in the
+   claim, which is exactly what you don't want app teams to copy. Profile names differ per
+   card (1g.5gb on an A100 40GB, 1g.24gb on an RTX PRO 6000), so keep one
+   profile list and DeviceClass set per card family.
 3. Guard twice. The Pulumi policy pack (next slide) catches bad profiles
    in preview. It only sees what Pulumi deploys, so a Kyverno policy on
    ResourceClaims and ResourceClaimTemplates enforces the same list at
    the API server for kubectl, operators and Kueue.
-4. Start order. The DRA kubelet plugin enumerates devices once at
+4. Start order. Not an IaC quirk: it happens on every new GPU node
+   (autoscaler scale-up, node replacement), because the GPU Operator and
+   the DRA plugin DaemonSets both start as soon as the node joins. The
+   DRA kubelet plugin (v0.5.1, what we ran) enumerates devices once at
    startup. If it starts before MIG Manager finishes, it publishes the
    whole GPU and nothing fits. Our fix: nodeSelector on
    nvidia.com/mig.config.state=success.
+   The story: on our cluster the plugin started at 23:18:47 and MIG was
+   applied at 23:19:29. The ResourceSlice had the whole GPU and none of
+   the slices, so pods stayed Pending until a rollout restart.
 5. Measure first. dcgm-exporter 4.8.4+ attributes DRA MIG metrics to
    pods (pod_uid, GPU_CI_ID labels). Get a month of data before chargeback.
-6. Migration. Extended-resource mapping (GA in 1.37) lets existing
-   nvidia.com/gpu specs be served by the DRA driver, no ResourceClaim
-   needed. Move teams over when they're ready.
+6. Migration. DRA extended resource mapping (KEP-5004, GA in 1.37): an
+   admin sets spec.extendedResourceName on a DeviceClass, and pods that
+   still ask for that name get a device through DRA, no ResourceClaim
+   (the scheduler creates one per pod). The KEP's stated goals: "Enable
+   existing applications to run without modification" and let admins
+   "transition to DRA gradually at their own pace."
+   Tested Nov 3 on the demo cluster: DeviceClass mig-1g-24gb with
+   extendedResourceName nvidia.com/mig-1g.24gb (infra/index.ts). An
+   unchanged pod with limits nvidia.com/mig-1g.24gb: 1 got a 1g.24gb
+   slice; nvidia-smi and PyTorch saw 23.6 GiB.
+   Honest scope: NVIDIA documents this pattern for nvidia.com/gpu; for
+   MIG names we tested it ourselves. Caveats: one DeviceClass per name,
+   and a node must not also run a device plugin advertising the same name
+   (switch per node or per pool).
 
 Sources: infra/index.ts (steps 1, 3, 4); infra/mig-policy; dcgm-exporter
 releases (4.8.4, Sep 18 2026); Kubernetes v1.37 DRA blog.
@@ -2052,79 +2147,7 @@ Tested with `kyverno apply` (CLI v1.19.2) against a 1g.24gb claim
 (pass), a 4g.96gb claim and a 7g.40gb template (both denied). Kyverno
 isn't installed on the demo cluster; the file ships in the repo.
 
-Pause here, then click into the gotchas.
--->
-
----
-
-# Where the gotchas hide.
-
-<div class="gt">
-  <div class="gt-head"><div>Gotcha</div><div>What bit us</div><div>What we do now</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>Start order</div><div class="gt-bit">The DRA plugin started before MIG Manager and published only <code>gpu-0</code>. Pods stayed Pending.</div><div class="gt-fix">Schedule the plugin on <code>mig.config.state=success</code>.</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>Profile names per card</div><div class="gt-bit"><code>1g.5gb</code> on an A100 40GB, <code>1g.24gb</code> on an RTX PRO 6000.</div><div class="gt-fix">One profile list and DeviceClass set per card family.</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>No live re-carve on A100</div><div class="gt-bit">A new layout means draining the node.</div><div class="gt-fix">Pick the layout per pool up front. DynamicMIG is Alpha, H100+.</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>Dashboards lie</div><div class="gt-bit">DCGM reports utilization as 0&ndash;1. The stock dashboard showed 60% as 0.6%.</div><div class="gt-fix">We ship a fixed dashboard in <code>infra/dashboards/</code>.</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>Kueue vs shared claims</div><div class="gt-bit">Kueue can't admit a pre-created claim with <code>matchAttribute</code>.</div><div class="gt-fix">Claim templates per pod, or wait for KEP-5729.</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>Routing pins</div><div class="gt-bit">Identical prompts all land on one replica (prefix-cache routing).</div><div class="gt-fix">Load-test with varied prompts.</div></div>
-  <div v-click class="gt-row"><div class="gt-name"><span class="gt-icon">!</span>Capacity</div><div class="gt-bit">On-demand A100/H100 was gone in Nov 2026. Capacity Blocks are prepaid, non-refundable.</div><div class="gt-fix">Keep the card a config key. We demo on an RTX PRO 6000.</div></div>
-</div>
-
-<style scoped>
-.gt { margin-top: 1.6rem; }
-.gt-head, .gt-row {
-  display: grid; grid-template-columns: 17rem 1.25fr 1fr; gap: 1.6rem; align-items: center;
-}
-.gt-head {
-  font-family: var(--slidev-font-mono); font-size: 0.9rem; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.06em; color: var(--p-fg-muted);
-  padding: 0 1rem 0.6rem;
-  border-bottom: 1.5px solid var(--p-border);
-}
-.gt-row {
-  padding: 0.62rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--p-border) 60%, transparent);
-  font-size: 1.02rem; line-height: 1.35;
-}
-.gt-name { font-weight: 700; display: flex; align-items: center; gap: 0.7rem; }
-.gt-icon {
-  flex: none; width: 1.6rem; height: 1.6rem; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, #f59e0b 22%, transparent); color: #fbbf24;
-  font-family: var(--slidev-font-mono); font-weight: 800; font-size: 0.95rem;
-}
-.gt-bit { color: var(--p-fg-muted); }
-.gt-fix { color: var(--p-primary); font-weight: 600; }
-</style>
-
-<!--
-90s. The abstract promises "where the gotchas hide". Every one of these
-bit us while building this talk. Pick three to tell as stories if time is
-short: start order, dashboards lie, capacity.
-
-- Start order: the DRA kubelet plugin started at 23:18:47, MIG was
-  applied at 23:19:29. The plugin only enumerates at startup, so the
-  ResourceSlice had the whole GPU and none of the slices. A rollout
-  restart fixed it; the permanent fix is a nodeSelector on
-  nvidia.com/mig.config.state=success.
-- Profile names: the policy pack and DeviceClasses are per card family.
-  Our policy pack carries both the A100 and the RTX PRO 6000 lists.
-- A100 can't toggle MIG mode without a GPU reset. DynamicMIG (driver
-  Alpha) needs H100+, destroys partitions it didn't create, and can't be
-  combined with MPS or the NVML health checks.
-- Dashboards: grafana.com dashboard 16640 plots DCGM_FI_PROF_GR_ENGINE_ACTIVE
-  (a 0-1 ratio) on a percent axis. We ship a fixed copy (x100) in
-  infra/dashboards/. dcgm-exporter 4.8.3 also renamed the Hostname label
-  to hostname, which breaks older dashboards.
-- Kueue docs: "Direct ResourceClaim references in the Pod spec are not
-  supported" and "device constraints (MatchAttribute) ... are not
-  supported". KEP-5729 (PodGroup-shared claims, Beta off by default in
-  1.37) is the upstream fix.
-- Routing: the llm-d endpoint picker scores prefix-cache hits, so a load
-  test with one prompt makes one replica hot and the other idle.
-- Capacity: on Nov 1 2026 there was no on-demand p4d, p4de or
-  p5.4xlarge in us-east-1, us-east-2 or us-west-2. A p4de Capacity Block
-  was about $488 and non-refundable.
+Pause here, then click into the open-source slide.
 -->
 
 ---

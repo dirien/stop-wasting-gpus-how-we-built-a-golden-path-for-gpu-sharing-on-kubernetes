@@ -10,7 +10,7 @@
     "export": "slidev export slides.md"
   },
   "devDependencies": {
-    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/lucide-lab": "^1.2.3",
     "@pulumi/slidev-theme": "^0.4.0",
     "@slidev/cli": "^0.50.0",
     "@slidev/client": "^0.50.0",
