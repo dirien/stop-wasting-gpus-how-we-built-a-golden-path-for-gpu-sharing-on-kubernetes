@@ -433,6 +433,23 @@ const draDriver = new k8s.helm.v3.Release("dra-driver-nvidia-gpu", {
 // The NVIDIA DRA driver Helm chart creates mig.nvidia.com DeviceClass automatically
 // when resources.gpus.enabled=true (see deviceclass-mig.yaml template)
 
+// Old manifests keep working: DRA extended resource mapping (KEP-5004, GA in 1.37)
+// serves pods that still ask for the device plugin's MIG name, e.g.
+// `nvidia.com/mig-1g.24gb: 1`, from a 1g.24gb slice. No ResourceClaim in the pod;
+// the scheduler creates one. One DeviceClass per extended resource name, and a node
+// must not also run a device plugin advertising the same name.
+const mig1gDeviceClass = new k8s.resource.v1.DeviceClass("mig-1g-24gb", {
+    metadata: { name: "mig-1g-24gb" },
+    spec: {
+        extendedResourceName: "nvidia.com/mig-1g.24gb",
+        selectors: [{
+            cel: {
+                expression: "device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'mig' && device.attributes['gpu.nvidia.com'].profile == '1g.24gb'",
+            },
+        }],
+    },
+}, { provider: k8sProvider, dependsOn: [draDriver] });
+
 // Monitoring namespace
 const monitoringNamespace = new k8s.core.v1.Namespace("monitoring-ns", {
     metadata: { name: "monitoring" },
