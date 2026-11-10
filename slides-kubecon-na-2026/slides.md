@@ -435,12 +435,199 @@ things changed."
 15s. Divider. Read it. Pause. Then say: "The hardware fix, MIG, existed
 for years. What changed is that Kubernetes can finally schedule it
 properly, so we could offer it as a golden path." (DRA went GA in
-Kubernetes 1.34.) Walk into the next slide.
+Kubernetes 1.34.) Then two changes, in this order: first the hardware
+(MIG), then the scheduler (DRA). Walk into the next slide.
 -->
 
 ---
 
-# Change one: the scheduler can now read GPU attributes.
+# Change one: the GPU itself can be carved.
+
+<p class="!mt-2 !text-[1.2rem] !leading-relaxed !max-w-[92%]">
+NVIDIA's Multi-Instance GPU (MIG) splits one physical card into partitions with their own streaming multiprocessors (SMs), memory, L2 cache and memory bandwidth. Hardware-enforced.
+</p>
+
+<div class="diagram-row">
+
+<div v-click class="diagram-box">
+  <div class="diagram-title">MPS</div>
+  <div class="diagram-sub">Multi-Process Service</div>
+  <div class="stack">
+    <div class="wkld">Process</div>
+    <div class="connector"></div>
+    <div class="wkld">Process</div>
+    <div class="connector"></div>
+    <div class="wkld">CUDA Context</div>
+    <div class="connector"></div>
+    <div class="gpu">GPU</div>
+  </div>
+  <ul class="facts">
+    <li>One shared CUDA context, concurrent kernels</li>
+    <li>Shared memory space</li>
+    <li class="bad">No fault isolation</li>
+  </ul>
+</div>
+
+<div v-click class="diagram-box">
+  <div class="diagram-title">Time-Slicing</div>
+  <div class="diagram-sub" aria-hidden="true">&nbsp;</div>
+  <div class="stack">
+    <div class="wkld">Workload 1</div>
+    <div class="connector"></div>
+    <div class="wkld">Workload 2</div>
+    <div class="connector dashed"></div>
+    <div class="gpu">GPU</div>
+  </div>
+  <ul class="facts">
+    <li>Pods take turns on the whole GPU</li>
+    <li>Context-switch tax, noisy neighbours</li>
+    <li class="bad">No memory or fault isolation</li>
+  </ul>
+</div>
+
+<div v-click class="diagram-box diagram-box--accent">
+  <div class="diagram-title">MIG</div>
+  <div class="diagram-sub" aria-hidden="true">&nbsp;</div>
+  <div class="stack">
+    <div class="wkld">GPU Instance</div>
+    <div class="connector"></div>
+    <div class="wkld">GPU Instance</div>
+    <div class="connector"></div>
+    <div class="wkld">GPU Instance</div>
+    <div class="connector"></div>
+    <div class="gpu">GPU</div>
+  </div>
+  <ul class="facts">
+    <li>Dedicated SMs, memory and cache</li>
+    <li class="good">Fault isolation between slices</li>
+    <li>Up to 7 slices (A100, H100), 4 on RTX PRO 6000</li>
+  </ul>
+</div>
+
+</div>
+
+<style scoped>
+.diagram-row {
+  margin-top: 0.9rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  align-items: stretch;
+}
+.diagram-box {
+  background: #15132c;
+  border: 1.5px solid #5b4cd6;
+  border-radius: 12px;
+  padding: 0.8rem 1rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 8px 24px rgba(126, 107, 255, 0.18);
+}
+.diagram-box--accent {
+  border-color: #c77bff;
+  box-shadow: 0 8px 28px rgba(199, 123, 255, 0.3);
+}
+.diagram-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #e9e7ff;
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.02em;
+}
+.diagram-sub {
+  font-size: 0.95rem;
+  color: var(--p-fg-muted);
+  margin: -0.5rem 0 0.6rem;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 75%;
+}
+.wkld, .gpu {
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.35rem 0.6rem;
+  line-height: 1.15;
+}
+.wkld {
+  background: #1f3a2a;
+  border: 1.5px solid #7ad99c;
+  color: #e5fbec;
+}
+.gpu {
+  background: #4a2222;
+  border: 2px solid #e07b7b;
+  color: #ffe0e0;
+}
+.connector {
+  width: 2px;
+  height: 0.4rem;
+  background: #9b8cff;
+  align-self: center;
+}
+.connector.dashed {
+  background: transparent;
+  border-left: 2px dashed #9b8cff;
+  width: 0;
+}
+.facts {
+  margin-top: 0.8rem;
+  width: 100%;
+  font-size: 1.0rem;
+  line-height: 1.35;
+  list-style: disc;
+  padding-left: 1.2rem;
+}
+.facts li { margin-top: 0.25rem; }
+.facts .bad { color: #ff9b9b; }
+.facts .good { color: #7ad99c; font-weight: 600; }
+</style>
+
+<!--
+75s. The hardware half of the story, first. MIG carves the card into
+real, isolated slices; the next slide is how the scheduler learns to
+see them (DRA). One slide, three columns, click
+by click.
+
+- MPS: every process funnels through one shared CUDA context. Concurrent
+  kernels, shared memory space. One crash takes everyone with it.
+- Time-slicing: workloads take turns on the whole GPU. Dashed line: no
+  static binding, the runtime multiplexes them. No memory or fault
+  isolation; a noisy neighbour starves the rest. (We showed this option
+  on the "two options" slide; don't re-explain it.)
+- MIG: each GPU Instance is a hardware partition that talks directly to
+  the silicon. Dedicated SMs, memory, cache. A fault stays in its slice.
+  (SM = streaming multiprocessor: the GPU's compute block. Each one runs
+  the CUDA threads; a 1g slice gets its own fixed share of them.)
+
+The takeaway is the topology: anything that funnels through one shared
+layer is coordination, not isolation.
+
+Our own scars from time-slicing, the same story from every peer we
+talked to, and a rack of GPUs that already supported MIG: that's why we
+went with MIG.
+
+Honest scope: MIG is data-center cards only. Up to 7 slices on A100/H100,
+4 on the RTX PRO 6000 Blackwell the demo runs on. If someone asks about
+NVLink-aware multi-card scheduling, route them to the next-steps slide.
+
+Sources:
+- MPS shared context, no fault isolation: NVIDIA MPS docs.
+- Time-slicing tradeoffs: NVIDIA GPU Operator docs.
+- 7 slices: NVIDIA MIG User Guide. 4 on RTX PRO 6000: nvidia-smi mig
+  -lgip on the demo cluster (1g.24gb 0/4).
+- Diagram inspired by @sunzoomass on Medium, "How Kubernetes evolved to
+  tame the GPU beast — 2025 edition", redrawn in this deck's palette.
+-->
+
+---
+
+# Change two: the scheduler can now read GPU attributes.
 
 <p v-click class="!mt-25 !text-[1.35rem] !leading-relaxed !max-w-[92%]">
 Dynamic Resource Allocation went GA in Kubernetes 1.34. For the first time,
@@ -627,7 +814,7 @@ creates the ResourceSlice for you on each GPU node; your platform team
 (or the driver Helm chart) creates the DeviceClass.
 
 The four YAMLs on this slide and the next are one consistent example
-(whole GPUs; MIG comes two slides later): the slice's gpu-0 is type gpu
+(whole GPUs; MIG slices come back on "With MIG, every slice is a device"): the slice's gpu-0 is type gpu
 with 40Gi, so it matches the large-gpu class (>= 40Gi), and it is an
 Ampere card, so it also matches the template's extra filter.
 
@@ -772,191 +959,6 @@ and the scheduler takes the first one it can satisfy:
 Kueue caveat: Kueue supports ResourceClaimTemplates but not firstAvailable
 in MultiKueue, and not pre-created shared claims (details in the notes of
 "Our next steps after MIG and DRA").
--->
-
----
-
-# Change two: the GPU itself can be carved.
-
-<p class="!mt-2 !text-[1.2rem] !leading-relaxed !max-w-[92%]">
-NVIDIA's Multi-Instance GPU (MIG) splits one physical card into partitions with their own streaming multiprocessors (SMs), memory, L2 cache and memory bandwidth. Hardware-enforced.
-</p>
-
-<div class="diagram-row">
-
-<div v-click class="diagram-box">
-  <div class="diagram-title">MPS</div>
-  <div class="diagram-sub">Multi-Process Service</div>
-  <div class="stack">
-    <div class="wkld">Process</div>
-    <div class="connector"></div>
-    <div class="wkld">Process</div>
-    <div class="connector"></div>
-    <div class="wkld">CUDA Context</div>
-    <div class="connector"></div>
-    <div class="gpu">GPU</div>
-  </div>
-  <ul class="facts">
-    <li>One shared CUDA context, concurrent kernels</li>
-    <li>Shared memory space</li>
-    <li class="bad">No fault isolation</li>
-  </ul>
-</div>
-
-<div v-click class="diagram-box">
-  <div class="diagram-title">Time-Slicing</div>
-  <div class="diagram-sub" aria-hidden="true">&nbsp;</div>
-  <div class="stack">
-    <div class="wkld">Workload 1</div>
-    <div class="connector"></div>
-    <div class="wkld">Workload 2</div>
-    <div class="connector dashed"></div>
-    <div class="gpu">GPU</div>
-  </div>
-  <ul class="facts">
-    <li>Pods take turns on the whole GPU</li>
-    <li>Context-switch tax, noisy neighbours</li>
-    <li class="bad">No memory or fault isolation</li>
-  </ul>
-</div>
-
-<div v-click class="diagram-box diagram-box--accent">
-  <div class="diagram-title">MIG</div>
-  <div class="diagram-sub" aria-hidden="true">&nbsp;</div>
-  <div class="stack">
-    <div class="wkld">GPU Instance</div>
-    <div class="connector"></div>
-    <div class="wkld">GPU Instance</div>
-    <div class="connector"></div>
-    <div class="wkld">GPU Instance</div>
-    <div class="connector"></div>
-    <div class="gpu">GPU</div>
-  </div>
-  <ul class="facts">
-    <li>Dedicated SMs, memory and cache</li>
-    <li class="good">Fault isolation between slices</li>
-    <li>Up to 7 slices (A100, H100), 4 on RTX PRO 6000</li>
-  </ul>
-</div>
-
-</div>
-
-<style scoped>
-.diagram-row {
-  margin-top: 0.9rem;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.25rem;
-  align-items: stretch;
-}
-.diagram-box {
-  background: #15132c;
-  border: 1.5px solid #5b4cd6;
-  border-radius: 12px;
-  padding: 0.8rem 1rem 0.9rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0 8px 24px rgba(126, 107, 255, 0.18);
-}
-.diagram-box--accent {
-  border-color: #c77bff;
-  box-shadow: 0 8px 28px rgba(199, 123, 255, 0.3);
-}
-.diagram-title {
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: #e9e7ff;
-  margin-bottom: 0.6rem;
-  letter-spacing: 0.02em;
-}
-.diagram-sub {
-  font-size: 0.95rem;
-  color: var(--p-fg-muted);
-  margin: -0.5rem 0 0.6rem;
-}
-.stack {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 75%;
-}
-.wkld, .gpu {
-  border-radius: 8px;
-  text-align: center;
-  font-weight: 600;
-  font-size: 0.95rem;
-  padding: 0.35rem 0.6rem;
-  line-height: 1.15;
-}
-.wkld {
-  background: #1f3a2a;
-  border: 1.5px solid #7ad99c;
-  color: #e5fbec;
-}
-.gpu {
-  background: #4a2222;
-  border: 2px solid #e07b7b;
-  color: #ffe0e0;
-}
-.connector {
-  width: 2px;
-  height: 0.4rem;
-  background: #9b8cff;
-  align-self: center;
-}
-.connector.dashed {
-  background: transparent;
-  border-left: 2px dashed #9b8cff;
-  width: 0;
-}
-.facts {
-  margin-top: 0.8rem;
-  width: 100%;
-  font-size: 1.0rem;
-  line-height: 1.35;
-  list-style: disc;
-  padding-left: 1.2rem;
-}
-.facts li { margin-top: 0.25rem; }
-.facts .bad { color: #ff9b9b; }
-.facts .good { color: #7ad99c; font-weight: 600; }
-</style>
-
-<!--
-75s. The hardware half of the story. DRA gave the scheduler the words;
-MIG gives it something real to hand out. One slide, three columns, click
-by click.
-
-- MPS: every process funnels through one shared CUDA context. Concurrent
-  kernels, shared memory space. One crash takes everyone with it.
-- Time-slicing: workloads take turns on the whole GPU. Dashed line: no
-  static binding, the runtime multiplexes them. No memory or fault
-  isolation; a noisy neighbour starves the rest. (We showed this option
-  on the "two options" slide; don't re-explain it.)
-- MIG: each GPU Instance is a hardware partition that talks directly to
-  the silicon. Dedicated SMs, memory, cache. A fault stays in its slice.
-  (SM = streaming multiprocessor: the GPU's compute block. Each one runs
-  the CUDA threads; a 1g slice gets its own fixed share of them.)
-
-The takeaway is the topology: anything that funnels through one shared
-layer is coordination, not isolation.
-
-Our own scars from time-slicing, the same story from every peer we
-talked to, and a rack of GPUs that already supported MIG: that's why we
-went with MIG.
-
-Honest scope: MIG is data-center cards only. Up to 7 slices on A100/H100,
-4 on the RTX PRO 6000 Blackwell the demo runs on. If someone asks about
-NVLink-aware multi-card scheduling, route them to the next-steps slide.
-
-Sources:
-- MPS shared context, no fault isolation: NVIDIA MPS docs.
-- Time-slicing tradeoffs: NVIDIA GPU Operator docs.
-- 7 slices: NVIDIA MIG User Guide. 4 on RTX PRO 6000: nvidia-smi mig
-  -lgip on the demo cluster (1g.24gb 0/4).
-- Diagram inspired by @sunzoomass on Medium, "How Kubernetes evolved to
-  tame the GPU beast — 2025 edition", redrawn in this deck's palette.
 -->
 
 ---
