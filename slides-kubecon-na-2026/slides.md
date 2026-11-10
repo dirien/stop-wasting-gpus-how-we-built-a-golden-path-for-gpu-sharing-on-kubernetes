@@ -21,6 +21,8 @@ defaults:
   layout: default
 ---
 
+<img class="divider-mascot" src="/brand/pulumipus-cool.svg" alt="" aria-hidden="true" style="width: 562px;" />
+
 <div class="absolute inset-0 flex flex-col justify-center items-start px-20">
   <h1 class="!text-[5.5rem] !leading-[1.02] !font-semibold !tracking-tight !mb-6 !max-w-[95%]">
     Why Are You Still Wasting Whole GPUs?
@@ -69,6 +71,8 @@ audience walks out with the repo, and on Monday they have a blueprint.
 
 ---
 
+<img class="divider-mascot" src="/brand/pulumipus-running.svg" alt="" aria-hidden="true" />
+
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">A customer called.</h1>
 </div>
@@ -92,6 +96,8 @@ laugh land, then click into the actual story.
 -->
 
 ---
+
+<img class="divider-mascot" src="/brand/pulumipus-walking.svg" alt="" aria-hidden="true" />
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[6rem] !leading-tight !font-semibold !tracking-tight !m-0 !max-w-[95%]">
@@ -410,6 +416,8 @@ things changed."
 
 ---
 
+<img class="divider-mascot" src="/brand/pulumipus-puluminary.svg" alt="" aria-hidden="true" />
+
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 !max-w-[95%]">
     Then things <span class="text-[var(--p-primary)]">changed.</span>
@@ -518,6 +526,8 @@ Sources:
 -->
 
 ---
+
+<img class="divider-mascot" src="/brand/pulumipus-meditating.svg" alt="" aria-hidden="true" />
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[6rem] !leading-tight !font-semibold !tracking-tight !m-0 !max-w-[95%]">
@@ -922,6 +932,8 @@ Sources:
 -->
 
 ---
+
+<img class="divider-mascot" src="/brand/pulumipus-running.svg" alt="" aria-hidden="true" />
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">So we built it.</h1>
@@ -1342,6 +1354,8 @@ satisfaction of "and it all works." Click into the demo.
 
 ---
 
+<img class="divider-mascot" src="/brand/pulumipus-walking.svg" alt="" aria-hidden="true" />
+
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 !max-w-[95%]">
     Live: <span class="text-[var(--p-primary)]">one GPU</span>, three pods.
@@ -1686,6 +1700,8 @@ Sources:
 
 ---
 
+<img class="divider-mascot" src="/brand/pulumipus-meditating.svg" alt="" aria-hidden="true" />
+
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <lucide-lab-elephant class="elephant" />
   <h1 class="!text-[5.5rem] !leading-tight !font-semibold !tracking-tight !m-0 !mt-4 text-[var(--p-primary)]">The elephant in the room.</h1>
@@ -1848,6 +1864,8 @@ Sources:
 -->
 
 ---
+
+<img class="divider-mascot" src="/brand/pulumipus-puluminary.svg" alt="" aria-hidden="true" />
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[6.5rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">Takeaways from our pain for you!</h1>
@@ -2335,13 +2353,68 @@ Close on the title callback: "Stop wasting whole GPUs." Then Q&A.
 -->
 
 ---
+class: 'meme-slide'
+---
 
-<div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
-  <h1 class="!text-[10rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">Q&amp;A</h1>
+<div class="qa">
+  <img class="qa-line qa-line--tr" src="/brand/bg-top-right-1.svg" alt="" aria-hidden="true" />
+  <img class="qa-line qa-line--bl" src="/brand/bg-bottom-left-1.svg" alt="" aria-hidden="true" />
+
+  <img class="qa-logo" src="/logos/pulumi-logo-horizontal-color-dark.svg" alt="Pulumi" />
+
+  <div class="qa-main">
+    <div class="qa-text">
+      <h1 class="qa-title">Questions<span>?</span></h1>
+      <p class="qa-sub">Meet me and my colleagues at our booth.</p>
+      <div class="qa-booth">
+        <span class="qa-booth-label">Booth</span>
+        <span class="qa-booth-num">200</span>
+      </div>
+    </div>
+    <img class="qa-pus" src="/brand/pulumipus-thinking.svg" alt="The Pulumipus, Pulumi's platypus mascot, in a thinking pose." />
+  </div>
 </div>
 
+<style scoped>
+.qa { position: absolute; inset: 0; overflow: hidden; background: var(--slidev-theme-background, #1F1B21); }
+.qa-line { position: absolute; width: 24%; pointer-events: none; opacity: 1; }
+.qa-line--tr { top: 0; right: 0; }
+.qa-line--bl { bottom: 0; left: 0; }
+.qa-logo { position: absolute; top: 72px; left: 96px; height: 64px; width: auto; }
+.qa-main {
+  position: absolute; inset: 0; padding: 0 120px 70px 96px; z-index: 1;
+  display: grid; grid-template-columns: 1.7fr 1fr; align-items: center; gap: 40px;
+}
+.qa-over {
+  font-family: var(--slidev-font-mono); font-size: 1.15rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--p-fg-muted);
+}
+.qa-title {
+  margin: 0 !important; font-size: 10.5rem !important; line-height: 0.95 !important;
+  font-weight: 700 !important; letter-spacing: -0.04em !important; color: #fff;
+}
+.qa-title span { color: var(--p-primary); }
+.qa-sub { margin: 2.4rem 0 0 !important; font-size: 2.6rem !important; line-height: 1.25 !important; color: #fff; }
+.qa-booth {
+  display: inline-flex; align-items: center; gap: 1.6rem; margin-top: 2.6rem;
+  padding: 1rem 2rem 1rem 1.8rem; border-radius: 18px;
+  background: var(--p-bg-elevated); border: 2px solid var(--p-primary);
+}
+.qa-booth-label {
+  font-family: var(--slidev-font-mono); font-size: 1.5rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--p-fg-muted);
+}
+.qa-booth-num { font-size: 5.5rem; line-height: 1; font-weight: 700; letter-spacing: -0.03em; color: var(--p-primary); }
+.qa-pus { width: 100%; max-width: 520px; justify-self: center; margin-top: 60px; }
+</style>
+
 <!--
-Open floor. Q&A prep ammo if no questions come:
+Open floor. Say it: "Questions? And if you'd rather talk one-on-one, my
+colleagues and I are at the Pulumi booth, number 200."
+Logo, accent lines and the Pulumipus are the official files from
+brand.pulumi.com (stored in public/ so the slide works offline).
+
+Q&A prep ammo if no questions come:
 - llm-d: CNCF sandbox since Mar 2026, v1.0.0 shipped Oct 20 2026.
   Disaggregated prefill/decode, KV-cache-aware routing, home of the
   Gateway API Inference Extension endpoint picker
@@ -2363,6 +2436,7 @@ Open floor. Q&A prep ammo if no questions come:
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
   <h1 class="!text-[10rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">Thanks.</h1>
+  <img src="/brand/pulumipus-cool.svg" alt="The Pulumipus mascot in sunglasses, arms crossed." class="!mt-6" style="width: 380px; height: auto;" />
 </div>
 
 <!--

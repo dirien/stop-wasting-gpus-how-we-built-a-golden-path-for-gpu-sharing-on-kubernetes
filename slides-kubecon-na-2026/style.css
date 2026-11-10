@@ -236,3 +236,17 @@ html {
   height: 100%;
   object-fit: contain;
 }
+
+/* ── divider-mascot: the Pulumipus on section dividers ──
+ * Official brand asset (brand.pulumi.com, "walking" pose), one per slide,
+ * absolutely positioned bottom right (it may cover the page number) so
+ * the divider layout itself doesn't move. */
+.divider-mascot {
+  position: fixed;   /* relative to the whole slide, so the body's clip doesn't crop it */
+  right: 40px;
+  bottom: 0;
+  width: 360px;
+  height: auto;
+  pointer-events: none;
+  z-index: 2;
+}
