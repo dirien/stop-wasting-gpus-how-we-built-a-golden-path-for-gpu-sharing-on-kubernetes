@@ -140,17 +140,15 @@ peers slide.
 
 ---
 
-# A customer called.
-
 <div class="zoom-content">
 
-<p class="!mt-2 !text-[1.5rem] !leading-relaxed !max-w-[90%]">
-A European automotive OEM. They asked us to help build an internal AI platform
-for training, fine-tuning, and serving the models they own.
+<p class="!mt-0 !text-[2.6rem] !leading-tight !font-semibold !tracking-tight !max-w-[95%]">
+A <span class="text-[var(--p-primary)]">European automotive OEM</span> asked us to help build an internal AI platform:
+training, fine-tuning and serving the models they own.
 </p>
 
-<p class="!mt-4 !text-[1.25rem] !leading-relaxed !max-w-[90%] text-[var(--p-fg-muted)]">
-The pattern is industry-wide. Their peers have been shipping versions of this for years:
+<p class="!mt-8 !text-[1.25rem] !leading-relaxed !max-w-[90%] text-[var(--p-fg-muted)]">
+The pattern is industry-wide. Others in the industry have been shipping similar work:
 </p>
 
 <div class="grid grid-cols-3 gap-6 mt-6">
@@ -182,7 +180,8 @@ The pattern is industry-wide. Their peers have been shipping versions of this fo
 wasted EC2 invoice. They're a European automotive OEM that asked us to
 sit on their side of the table and build an AI platform with them.
 
-Three named peers, all public:
+Three named examples, all public: two OEMs (BMW, VW) and one Tier-1
+supplier (Continental). OEM = Original Equipment Manufacturer, the carmaker.
 - BMW: 230 PB storage, 240M km simulated. Red Hat / DXC case study.
   (redhat.com/en/success-stories/bmwgroup)
 - Volkswagen Group 2025: generative-AI pipeline for brand assets on
@@ -300,7 +299,7 @@ stopping their admin." Don't explain the meme.
 
 ---
 
-# Platform engineers had two options.
+# We trialed and evaluated two options.
 
 <div class="grid grid-cols-2 gap-10 mt-4">
 
@@ -338,13 +337,13 @@ sharing:
 </div>
 
 <p v-click class="!mt-10 !text-[2.3rem] !leading-relaxed text-[var(--p-primary)] !font-semibold text-center">
-The only option left was buying more hardware. We've all been there.
+Whole GPUs wasted the card. Time-slicing put every neighbor at risk.
 </p>
 
 
 <!--
 75s. This slide is the audience-recognition beat. The room has lived this.
-Walk down the two options platform engineers had before DRA:
+Walk down the two options we trialed with the customer before DRA:
 
 Left panel: the device plugin. nvidia.com/gpu: 1 — a count, not an attribute.
 Pod gets the whole GPU. The 12GB-on-80GB number is concrete: the audience
@@ -356,8 +355,16 @@ metrics go dark in DCGM-Exporter the moment you turn it on. The metrics
 blind spot is the one most teams don't see coming until Prometheus stops
 answering questions.
 
-Closing line: "the only option left was buying more hardware. We've all
-been there." Pause. The audience is nodding. That's the wound.
+Closing line: "Whole GPUs wasted the card. Time-slicing put every
+neighbor at risk." Pause. The audience is nodding. That's the wound:
+waste on one side, risk on the other.
+
+If asked "Why not MIG with the device plugin?": "We had it on the list.
+MIG has existed since the A100 (2020), but through the device plugin the
+scheduler only sees counts per profile (nvidia.com/mig-1g.10gb), so we
+couldn't build self-service on it." The waste fix is the hardware (MIG);
+DRA is what makes it schedulable as a golden path. Don't claim DRA alone
+saves GPUs.
 
 Fact-check:
 - "Trades memory and fault-isolation..." → docs.nvidia.com/datacenter/cloud-native/gpu-operator (gpu-sharing.html)
@@ -425,9 +432,10 @@ things changed."
 </div>
 
 <!--
-15s. Divider. Read it. Pause. That's the day Kubernetes 1.34 shipped, and
-with it two things that turned the customer's problem from "unsolvable"
-into "solvable on a Tuesday." Walk into the next slide.
+15s. Divider. Read it. Pause. Then say: "The hardware fix, MIG, existed
+for years. What changed is that Kubernetes can finally schedule it
+properly, so we could offer it as a golden path." (DRA went GA in
+Kubernetes 1.34.) Walk into the next slide.
 -->
 
 ---
