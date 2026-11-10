@@ -457,7 +457,7 @@ the scheduler can read what's <em>inside</em> a GPU, not just an integer count o
 <div class="gpu-caption gpu-caption--accent">The pattern is borrowed</div>
 <p class="!mt-3 !text-[1.0rem] !leading-snug italic text-[var(--p-fg-muted)]">
 "This enhancement took inspiration from dynamic provisioning for storage volumes."
-<br/>&mdash; Kubernetes 1.34 release blog
+<br/>Kubernetes 1.34 release blog
 </p>
 <div class="!mt-4 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[1.0rem] !leading-snug">
 <div class="!font-semibold text-[var(--p-fg-muted)]">Storage (since 2017)</div>
@@ -2120,12 +2120,12 @@ Rule of thumb: if one pod's OOM or crash must not touch another, it's MIG.
   <div v-click class="rcard">
     <div class="rnum">01</div>
     <div class="rtitle">Pick slice sizes per node pool</div>
-    <div class="rbody">Label the pool, e.g. <code>mig.config=all-balanced</code>. MIG Manager cuts every card the same. Changing it drains the node.</div>
+    <div class="rbody">Label the pool, e.g. <code>mig.config=all-balanced</code>. Changing it later means emptying the GPUs first.</div>
   </div>
   <div v-click class="rcard">
     <div class="rnum">02</div>
     <div class="rtitle">Give each slice size a name</div>
-    <div class="rbody">One DeviceClass per size, e.g. <code>mig-1g-24gb</code>. App teams ask for the name, not a filter expression.</div>
+    <div class="rbody">The driver has one class for all MIG slices. Add one per size, e.g. <code>mig-1g-24gb</code>.</div>
   </div>
   <div v-click class="rcard">
     <div class="rnum">03</div>
@@ -2140,7 +2140,7 @@ Rule of thumb: if one pod's OOM or crash must not touch another, it's MIG.
   <div v-click class="rcard">
     <div class="rnum">05</div>
     <div class="rtitle">Measure, then bill</div>
-    <div class="rbody">dcgm-exporter maps MIG metrics to pods. Collect a month before chargeback.</div>
+    <div class="rbody">dcgm-exporter 4.9+ maps MIG metrics to pods. Bill on slice-hours, not utilization.</div>
   </div>
   <div v-click class="rcard">
     <div class="rnum">06</div>
@@ -2181,12 +2181,22 @@ the order we'd do them again. Top row first (1-3), then bottom (4-6).
    nvidia.com/mig.config (e.g. all-balanced: on our RTX PRO 6000 that is
    1x 2g.48gb + 2x 1g.24gb). The GPU Operator's MIG Manager reads the
    label and cuts every card in the pool the same way. Changing it later
-   drains the node, so pick per pool, not per pod. Need other sizes? Add
-   a second pool with a different label.
-   An A100 can't toggle MIG mode without a GPU reset. DynamicMIG (driver
-   Alpha) needs H100+, destroys partitions it didn't create, and can't be
-   combined with MPS or the NVML health checks.
-2. Admin-owned DeviceClasses, one per slice size. The DeviceClass holds
+   is disruptive: MIG Manager stops the operator's own GPU pods, but it
+   "requires that no user workloads are running on the GPUs being
+   configured" and the node "might need to be cordoned" (NVIDIA GPU
+   Operator docs). It doesn't drain for you, and it may reboot the node
+   (WITH_REBOOT on some clouds). So pick per pool, not per pod. Need other
+   sizes? Add a second pool with a different label.
+   MIG needs Ampere or newer. An A100 can't toggle MIG mode without a GPU
+   reset; Hopper and later enable MIG mode on demand. DynamicMIG in the
+   DRA driver is Alpha, destroys partitions it didn't create, and can't
+   run together with MPS or passthrough.
+2. Admin-owned DeviceClasses, one per slice size. NVIDIA's chart only
+   installs generic classes: gpu.nvidia.com (whole GPUs), mig.nvidia.com
+   (any MIG slice, type == mig) and vfio.gpu.nvidia.com. The driver names
+   the devices (gpu-0-mig-1g24gb-14-6) and publishes their profile, but
+   there is no class per size, because profile names differ per card.
+   The DeviceClass holds
    the CEL selector (driver, type == mig, profile == 1g.24gb); app teams
    just write deviceClassName: mig-1g-24gb. Our demo's shared claim still
    uses the driver's generic mig.nvidia.com class with the CEL in the
@@ -2207,8 +2217,15 @@ the order we'd do them again. Top row first (1-3), then bottom (4-6).
    The story: on our cluster the plugin started at 23:18:47 and MIG was
    applied at 23:19:29. The ResourceSlice had the whole GPU and none of
    the slices, so pods stayed Pending until a rollout restart.
-5. Measure first. dcgm-exporter 4.8.4+ attributes DRA MIG metrics to
-   pods (pod_uid, GPU_CI_ID labels). Get a month of data before chargeback.
+5. Measure, then bill. dcgm-exporter 4.8.4 (Sep 18) started attributing
+   DRA MIG metrics to pods (pod_uid, GPU_CI_ID labels), but only for MIG
+   devices "visible to DCGM at startup", and it left some utilization
+   fields blank on MIG GPUs; 4.9.0 (Nov 6) fixed that. A Dynamic MIG
+   layout change needs an exporter restart.
+   Bill on allocated slice-hours (from the ResourceClaims), not on
+   utilization: in our own A/B test the per-slice DCGM numbers showed a
+   21% training dip where we measured 5%. Use utilization to right-size,
+   and collect a month of data before you charge anyone.
 6. Migration. DRA extended resource mapping (KEP-5004, GA in 1.37): an
    admin sets spec.extendedResourceName on a DeviceClass, and pods that
    still ask for that name get a device through DRA, no ResourceClaim
@@ -2224,8 +2241,11 @@ the order we'd do them again. Top row first (1-3), then bottom (4-6).
    and a node must not also run a device plugin advertising the same name
    (switch per node or per pool).
 
-Sources: infra/index.ts (steps 1, 3, 4); infra/mig-policy; dcgm-exporter
-releases (4.8.4, Sep 18 2026); Kubernetes v1.37 DRA blog.
+Sources: infra/index.ts (steps 1, 3, 4); infra/mig-policy;
+docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html (MIG Manager);
+dra-driver-nvidia-gpu.sigs.k8s.io MIG guide and feature gates (DynamicMIG);
+github.com/NVIDIA/dcgm-exporter/releases (4.8.4 Sep 18, 4.9.0 Nov 6 2026);
+Kubernetes v1.37 DRA blog.
 -->
 
 ---
