@@ -1,0 +1,14 @@
+environment:
+  - pulumi-idp/auth
+config:
+  # Nov 1: no on-demand p4d/p4de/p5.4xlarge in us-east-1/us-east-2/us-west-2,
+  # so the demo runs on a g7e.4xlarge (1x RTX PRO 6000, MIG).
+  # Nov 9: rebuilt after an account cleanup job deleted the stack. No g7e
+  # capacity in us-east-1b; reserved by hand in us-east-1c, ends
+  # 2026-11-11T17:00Z (a running node keeps running). Cancel it after the talk:
+  # aws ec2 cancel-capacity-reservation --capacity-reservation-id cr-01684609bd77671d8
+  aws:region: us-east-1
+  gpu-dra-blog-test:gpuInstanceType: g7e.4xlarge
+  gpu-dra-blog-test:gpuCapacityType: ON_DEMAND
+  gpu-dra-blog-test:capacityReservationId: cr-01684609bd77671d8
+  gpu-dra-blog-test:gpuAvailabilityZone: us-east-1c

@@ -1,0 +1,36 @@
+# In-cluster twin of infra/mig-policy: the Pulumi policy pack only sees what
+# Pulumi deploys, this Kyverno policy also catches kubectl, operators and Kueue.
+# Not deployed by infra/index.ts (Kyverno isn't part of the demo cluster).
+# Keep the blocked list in sync with infra/mig-policy/index.ts.
+# Test: kyverno apply infra/kyverno/enforce-small-mig-profiles.yaml --resource <claims.yaml>
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: enforce-small-mig-profiles
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["resource.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["resourceclaims", "resourceclaimtemplates"]
+  variables:
+    - name: blocked
+      expression: >-
+        ['1g.10gb', '2g.20gb', '3g.40gb', '7g.80gb',
+         '4g.20gb', '4g.40gb', '7g.40gb', '4g.96gb']
+    - name: requests
+      expression: >-
+        object.kind == 'ResourceClaimTemplate'
+          ? object.spec.spec.devices.requests
+          : object.spec.devices.requests
+  validations:
+    - expression: >-
+        variables.requests.all(r,
+          !has(r.exactly) || !has(r.exactly.selectors) ||
+          r.exactly.selectors.all(s,
+            !variables.blocked.exists(p, s.cel.expression.contains('"' + p + '"'))))
+      message: >-
+        MIG profile not allowed on this cluster.
+        Allowed: 1g.5gb, 2g.10gb, 3g.20gb, 1g.24gb, 2g.48gb.

@@ -2,7 +2,8 @@ import * as policy from "@pulumi/policy";
 
 // Allowed MIG profiles on this cluster: A100 40GB (p4d.24xlarge) with
 // `all-balanced` layout = 2× 1g.5gb + 1× 2g.10gb + 1× 3g.20gb per GPU.
-const allowedMigProfiles = ["1g.5gb", "2g.10gb", "3g.20gb"];
+// RTX PRO 6000 96GB (g7e) fallback: 2× 1g.24gb + 1× 2g.48gb.
+const allowedMigProfiles = ["1g.5gb", "2g.10gb", "3g.20gb", "1g.24gb", "2g.48gb"];
 
 // Profiles that either (a) don't exist on this hardware (the 80GB family —
 // 1g.10gb, 2g.20gb, 3g.40gb, 7g.80gb belong to A100 80GB / H100), or
@@ -11,6 +12,7 @@ const blockedMigProfiles = [
     "1g.10gb", "2g.20gb", "3g.40gb", "7g.80gb",   // 80GB-only profiles
     "4g.20gb", "4g.40gb",                            // unsupported on this cluster
     "7g.40gb",                                       // full-GPU on A100 40GB — defeats MIG
+    "4g.96gb",                                       // full-GPU on RTX PRO 6000 — defeats MIG
 ];
 
 new policy.PolicyPack("mig-policy", {

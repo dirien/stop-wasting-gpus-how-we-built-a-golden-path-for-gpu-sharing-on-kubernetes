@@ -8,3 +8,16 @@ config:
   pulumi:tags:
     value:
       pulumi:template: aws-typescript
+packages:
+  gateway-networking:
+    source: kubernetes
+    version: 4.34.2
+    extensions:
+      - name=gateway-networking
+      - crd-manifest=crds/gateway-api-standard-v1.7.0.yaml
+  prometheus-operator:
+    source: kubernetes
+    version: 4.34.2
+    extensions:
+      - name=prometheus-operator
+      - crd-manifest=crds/monitoring.coreos.com_podmonitors.yaml
