@@ -187,10 +187,95 @@ Three named peers, all public:
 
 The audience walks out with the shape: every European OEM is building
 some version of this. We were the team building the next one. The next
-slide is why their K8s admin couldn't close the gap on their own.
+slide is why owning models is spreading beyond automotive (Revolut), then
+why their K8s admin couldn't close the gap on their own.
 
 Don't quote NSDI / Cast AI here anymore. Those numbers belong on the
 "the bill" beat where the cost wound lands harder.
+-->
+
+---
+
+# Why run your own models? Revolut did it.
+
+<div class="grid grid-cols-[1fr_1.15fr] gap-12 mt-8 items-start">
+  <a href="https://www.youtube.com/watch?v=Ok6QdZHCcI8" target="_blank" class="yt-card">
+    <img src="/revolut-self-hosting-thumb.jpg" alt="Video thumbnail: David Abitbol of Revolut on stage at AI Engineer New York, captioned 'A Tenth of the Bill'." />
+    <div class="yt-caption">David Abitbol, Revolut · AI Engineer New York<br/>"How Revolut Cut AI Coding Costs 90% With Self-Hosted Open Models"</div>
+  </a>
+  <ul class="takeaways">
+    <li v-click><strong>A tenth of the bill.</strong> An open model (GLM 5.3) for 2,000 engineers at about $0.30 per million tokens. Flat cost.</li>
+    <li v-click><strong>Unlimited tokens changed the work.</strong> Lead time down 70%, coding time down 60%.</li>
+    <li v-click><strong>Regulated, and still fine.</strong> An EU bank on a Chinese open model: weights on US GPUs, a human in the loop.</li>
+    <li v-click><strong>The GPUs are now your only bill.</strong> 56× B200. Tuning, not more GPUs, cut time to first token by 88%.</li>
+  </ul>
+</div>
+
+<p v-click class="!mt-8 !text-[2.3rem] !leading-snug text-[var(--p-primary)] !font-semibold">
+  Owning the model is the easy part. Using every GPU well is the hard part.
+</p>
+
+<style scoped>
+.yt-card { display: block; text-decoration: none; border: 1.5px solid var(--p-border); border-radius: 14px; overflow: hidden; background: var(--p-bg-elevated); }
+.yt-card img { width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: cover; }
+.yt-caption { padding: 0.8rem 1.1rem 1rem; font-size: 1rem; line-height: 1.4; color: var(--p-fg-muted); }
+.takeaways { list-style: none; padding: 0; margin: 0; }
+.takeaways li { font-size: 1.7rem; line-height: 1.35; margin: 0 0 1.2rem; padding-left: 1.1rem; border-left: 3px solid var(--p-primary); }
+.takeaways strong { color: var(--p-fg); }
+</style>
+
+<!--
+~60s. Motivation beat, right after the customer slide. Why would anyone,
+like our OEM, want to own and serve their own models instead of calling
+an API? Here's a public example from this year, and it shows how fast
+this is changing. Four clicks,
+then the line at the bottom.
+
+What to say:
+- Revolut (EU digital bank, 80M customers) moved 2,000 engineers from
+  commercial coding APIs to an open model on dedicated GPUs in April 2026.
+  Blended cost about $0.30 per million tokens; the invoice is about a
+  tenth of what they paid Anthropic and OpenAI. Flat billing.
+- Unlimited tokens changed behavior: people stopped rationing tokens for
+  "the hardest task of the quarter." Their dashboards show lead time down
+  about 70% and coding time down about 60%. Lead time = from an
+  engineer picking up a feature until it is merged and ready to deploy
+  (days); coding time = the hands-on coding part of that (hours).
+- Compliance (his "message for the CIO", 10:59-11:37): EU-regulated bank,
+  strictest regime, and it still works.
+  - The stigma: GLM is a Chinese open model. "You're not using the
+    inference dedicated endpoint that goes to China. You're just getting
+    the weights and putting them on a US-based service."
+  - Data stays in countries in the data-adequacy framework ("US, EU, UK,
+    Israel"); inference/GPU providers run "zero data retention by
+    default."
+  - Coding agents are "not considered autonomous agents" because a
+    sandbox with approval rules keeps a human in the loop ("allow grep
+    but not Gradle"). That is what gives the regulator confidence. The
+    sandbox also guards against rogue insiders and prompt injection.
+  - Plus "very strong OpenTelemetry" so you can dig into any incident.
+- The catch, and the bridge to our customer: once you own the model, the
+  GPUs are your bill. Same 56x B200 the whole time; tuning took time to
+  first token from over 10 s to about 1.6 s while load grew 76%. "80% of
+  the gain came from adjusting hyperparameters."
+- Line at the bottom, then: "Our OEM wanted exactly this. Their platform
+  team just didn't have the tools to share the GPUs." Click into the
+  "limited by the technology of my time" meme.
+
+Careful in Q&A:
+- "Self-hosted" = dedicated GPUs at a provider (thumbnail: "GLM 5.3 on 56
+  x B200s with Together"), not their own Kubernetes cluster.
+- All numbers are the speaker's own, from a 12-minute talk. The
+  productivity numbers are correlation from their dashboards.
+- Auto-captions garble the model name ("GLM 51", "GLM-53"); GLM 5.3 is
+  from the thumbnail. He describes it as about 800B parameters.
+- More from the talk if asked: first token under 3 s is the target (past
+  5 s, complaints start); 200 tokens/s is enough; "long context is a
+  scam" (256k, not 1M); FP4 on Blackwell; TP8 over TP4 for KV cache room;
+  coding needs prefix-cache hits above 90%.
+
+Source: youtube.com/watch?v=Ok6QdZHCcI8 (AI Engineer, David Abitbol,
+Revolut), transcript pulled Nov 10 2026.
 -->
 
 ---
@@ -293,7 +378,34 @@ class: 'meme-slide'
 ~10s. No words. The audience will read it themselves and snort. Wait for
 the laugh. This is the payoff for the "buy more hardware" wound on the
 previous slide — we waited for prices to come down, they never did. Click
-into the pivot.
+into the two price memes, then the pivot.
+-->
+
+---
+class: 'meme-slide'
+---
+
+<div class="meme-frame-light">
+  <img src="/meme-gpu-prices-wtf.png" alt="Two-panel meme with Joey from Friends: 'Let's check GPU prices', then a shocked face: 'WTF'." />
+</div>
+
+<!--
+~5s. No words. Right after the wojak. Let it land, click.
+-->
+
+---
+class: 'meme-slide'
+---
+
+<div class="meme-frame-light">
+  <img src="/rtx5090-price.png" alt="Amazon Italy listing: ASUS TUF Gaming RTX 5090 OC, 32GB GDDR7, 9,330.71 euros, only 3 left." />
+</div>
+
+<!--
+~8s. The receipt. A consumer RTX 5090 (32GB) listed on Amazon Italy at
+EUR 9,330.71, "only 3 left". NVIDIA's launch price was USD 1,999
+(Jan 2025). One beat: "That's a gaming card." Then click into "Then
+things changed."
 -->
 
 ---
@@ -1242,6 +1354,80 @@ before clicking into the terminal on the next slide.
 -->
 
 ---
+class: 'meme-slide'
+---
+
+<div class="meme-frame">
+  <video controls loop muted playsinline preload="auto"
+         aria-label="Recorded terminal session: kubectl commands showing one GPU node sliced into three MIG profiles."
+         poster="/demo.gif">
+    <source src="/demo.webm" type="video/webm" />
+    <source src="/demo.mp4"  type="video/mp4" />
+    <!-- Fallback for browsers without video support -->
+    <img src="/demo.gif" alt="Demo recording (animated GIF fallback)." />
+  </video>
+</div>
+
+<style scoped>
+/* Override the global meme-frame background to match the Catppuccin
+ * Macchiato palette of the recorded terminal — letterbox blends in. */
+.meme-frame { background: #1e1e2e; }
+</style>
+
+<!--
+~25s. The recorded demo, played first so the room sees the whole flow
+once at a calm pace. Then the next slides walk the same steps (live if
+the cluster is up, the terminal slides as fallback). If the cluster is
+down, this slide is the demo. Either way: stay quiet during the keeper command (the for-loop). The same
+parent GPU UUID across three pods is the visual. It ends with a real
+answer from Qwen3, routed through the gateway to a 1g slice.
+
+Recorded Nov 2 2026 via Charm VHS (demo.tape) against the live cluster.
+Re-render from slides-kubecon-na-2026/:
+`pulumi env run ediri/pulumi-idp/auth -- env KUBECONFIG=/tmp/kubeconfig vhs demo.tape`
+-->
+
+---
+class: 'meme-slide'
+---
+
+<img src="/grafana-mig-climbing.png"
+     alt="Grafana NVIDIA DCGM MIG dashboard showing three MIG slices on one RTX PRO 6000: one training slice and two vLLM slices under load"
+     class="absolute inset-0 w-full h-full object-cover" />
+
+<div class="absolute top-8 left-12 right-12 z-10">
+  <h1 class="!text-[3.4rem] !leading-tight !font-semibold !tracking-tight !m-0 text-white"
+      style="text-shadow: 0 2px 16px rgba(0,0,0,0.9), 0 1px 4px rgba(0,0,0,1);">
+    Live: <span class="text-[var(--p-primary)]">three workloads</span>, climbing.
+  </h1>
+</div>
+
+<!--
+60s. Switch to Grafana in the browser. Three slices, three colored lines:
+the training slice and the two vLLM slices under request load. Stay quiet
+for ten seconds while the dashboard does the talking. Then: "That's what
+an idle GPU becomes when the scheduler can see the slices." Walk into the
+next slide.
+
+Fallback screenshot: public/grafana-mig-climbing.png (recorded Nov 2 2026
+on the RTX PRO 6000 demo cluster, with load through the gateway).
+
+Story if there's time ("dashboards lie"): the stock grafana.com dashboard
+16640 plots DCGM_FI_PROF_GR_ENGINE_ACTIVE, a 0-1 ratio, on a percent axis,
+so 60% showed as 0.6%. We ship a fixed copy (x100) in infra/dashboards/.
+dcgm-exporter 4.8.3 also renamed the Hostname label to hostname, which
+breaks older dashboards.
+
+If asked about the training dip (61% to 48%): mostly the dashboard.
+Measured, training loses about 5%, all in its CPU data loader sharing the
+node with vLLM; the GPU step time doesn't change. See DEMO.md Part 4.
+
+If one vLLM line stays flat: the llm-d endpoint picker scores prefix-cache
+hits, so a load test with one identical prompt pins one replica. Load-test
+with varied prompts.
+-->
+
+---
 
 <div class="zoom-content">
 
@@ -1276,6 +1462,10 @@ gpu-0-mig-1g24gb-14-9   1g.24gb GPU-676c1adb-1b9d-b501-13e6-05cc9b040785
 </style>
 
 <!--
+BACKUP (with the next slide). Use these two only if the live terminal
+demo fails or you need the output on screen; otherwise skip to Day 1 /
+Day 30.
+
 Demo part 1, about 60s: the GPU before any pod. Three questions.
 1. The node: a g7e.4xlarge, MIG layout all-balanced, applied by the GPU
    Operator's MIG Manager from the node label.
@@ -1341,6 +1531,8 @@ Sharing a GPU allows teams to efficiently utilize computational resources, reduc
 </style>
 
 <!--
+BACKUP (with the previous slide). Skip if the live demo worked.
+
 Demo part 2, about 2 minutes. Walk the chain: pod -> request -> slice.
 The custom-columns show each GPU pod's request name from the shared claim
 (gateway and endpoint picker have none and run on the system node). The
@@ -1358,80 +1550,6 @@ on-demand in Nov 2026. Same MIG, same DRA, same story as the customer's A100s.
 If asked about routing: with identical prompts the endpoint picker keeps
 everything on one replica (prefix-cache affinity); varied prompts spread
 across both.
--->
-
----
-class: 'meme-slide'
----
-
-<img src="/grafana-mig-climbing.png"
-     alt="Grafana NVIDIA DCGM MIG dashboard showing three MIG slices on one RTX PRO 6000: one training slice and two vLLM slices under load"
-     class="absolute inset-0 w-full h-full object-cover" />
-
-<div class="absolute top-8 left-12 right-12 z-10">
-  <h1 class="!text-[3.4rem] !leading-tight !font-semibold !tracking-tight !m-0 text-white"
-      style="text-shadow: 0 2px 16px rgba(0,0,0,0.9), 0 1px 4px rgba(0,0,0,1);">
-    Live: <span class="text-[var(--p-primary)]">three workloads</span>, climbing.
-  </h1>
-</div>
-
-<!--
-60s. Switch to Grafana in the browser. Three slices, three colored lines:
-the training slice and the two vLLM slices under request load. Stay quiet
-for ten seconds while the dashboard does the talking. Then: "That's what
-an idle GPU becomes when the scheduler can see the slices." Walk into the
-next slide.
-
-Fallback screenshot: public/grafana-mig-climbing.png (recorded Nov 2 2026
-on the RTX PRO 6000 demo cluster, with load through the gateway).
-
-Story if there's time ("dashboards lie"): the stock grafana.com dashboard
-16640 plots DCGM_FI_PROF_GR_ENGINE_ACTIVE, a 0-1 ratio, on a percent axis,
-so 60% showed as 0.6%. We ship a fixed copy (x100) in infra/dashboards/.
-dcgm-exporter 4.8.3 also renamed the Hostname label to hostname, which
-breaks older dashboards.
-
-If asked about the training dip (61% to 48%): mostly the dashboard.
-Measured, training loses about 5%, all in its CPU data loader sharing the
-node with vLLM; the GPU step time doesn't change. See DEMO.md Part 4.
-
-If one vLLM line stays flat: the llm-d endpoint picker scores prefix-cache
-hits, so a load test with one identical prompt pins one replica. Load-test
-with varied prompts.
--->
-
----
-class: 'meme-slide'
----
-
-<div class="meme-frame">
-  <video controls loop muted playsinline preload="auto"
-         aria-label="Recorded terminal session: kubectl commands showing one GPU node sliced into three MIG profiles."
-         poster="/demo.gif">
-    <source src="/demo.webm" type="video/webm" />
-    <source src="/demo.mp4"  type="video/mp4" />
-    <!-- Fallback for browsers without video support -->
-    <img src="/demo.gif" alt="Demo recording (animated GIF fallback)." />
-  </video>
-</div>
-
-<style scoped>
-/* Override the global meme-frame background to match the Catppuccin
- * Macchiato palette of the recorded terminal — letterbox blends in. */
-.meme-frame { background: #1e1e2e; }
-</style>
-
-<!--
-~25s. The recorded fallback. If the live demo went green on slide 16,
-this is the rerun for emphasis — let the audience watch the commands
-again at a calm pace. If the live demo broke, this slide is the demo.
-Either way: stay quiet during the keeper command (the for-loop). The same
-parent GPU UUID across three pods is the visual. It ends with a real
-answer from Qwen3, routed through the gateway to a 1g slice.
-
-Recorded Nov 2 2026 via Charm VHS (demo.tape) against the live cluster.
-Re-render from slides-kubecon-na-2026/:
-`pulumi env run ediri/pulumi-idp/auth -- env KUBECONFIG=/tmp/kubeconfig vhs demo.tape`
 -->
 
 ---
@@ -2053,7 +2171,7 @@ Sources:
 # Guardrails: bad slices die twice.
 
 <div class="guard">
-  <div class="gcol">
+  <div v-click class="gcol">
     <div class="gpu-caption gpu-caption--accent">Before deploy: Pulumi policy pack</div>
     <div class="gcode">
 
@@ -2125,7 +2243,8 @@ spec:
 </style>
 
 <!--
-60s. Same rule, two places. Left first, then click for the right.
+60s. Same rule, two places. Opens with only the title. Click for the
+left (policy pack), click again for the right (Kyverno).
 
 Left: the Pulumi policy pack, trimmed for the slide (the real file is
 infra/mig-policy/index.ts). It runs on every pulumi preview and pulumi
