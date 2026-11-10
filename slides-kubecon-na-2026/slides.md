@@ -417,8 +417,21 @@ class: 'meme-slide'
 <!--
 ~8s. The receipt. A consumer RTX 5090 (32GB) listed on Amazon Italy at
 EUR 9,330.71, "only 3 left". NVIDIA's launch price was USD 1,999
-(Jan 2025). One beat: "That's a gaming card." Then click into "Then
-things changed."
+(Jan 2025). One beat: "That's a gaming card." Then click into Patrick.
+-->
+
+---
+class: 'meme-slide'
+---
+
+<div class="meme-frame">
+  <img src="/patrick-thinking.jpg" alt="Patrick Star from SpongeBob, arms crossed, hand on chin, squinting skeptically." />
+</div>
+
+<!--
+~5s. No words. After the 5090 receipt: the room is thinking the same
+thing. Let it land, then click into "Then things changed."
+Image source: i.pinimg.com (Pinterest upload), saved locally.
 -->
 
 ---
@@ -966,7 +979,7 @@ in MultiKueue, and not pre-created shared claims (details in the notes of
 <img class="divider-mascot" src="/brand/pulumipus-running.svg" alt="" aria-hidden="true" />
 
 <div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
-  <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">So we built it.</h1>
+  <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 text-[var(--p-primary)] !max-w-[95%]">So we start building it.</h1>
 </div>
 
 <!--
@@ -982,7 +995,7 @@ class: 'meme-slide'
 </div>
 
 <!--
-~5s. No words. Right after "So we built it." Let it loop once, click.
+~5s. No words. Right after "So we start building it.": the villager is the punchline. Let it loop once, click.
 GIF source: global.discourse-cdn.com/funcom (forum upload).
 -->
 
