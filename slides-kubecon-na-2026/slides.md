@@ -547,7 +547,7 @@ API kinds. Pause, then click into "The cluster side."
 
 
 <div class="zoom-wrap">
-<p v-click class="!mt-2 !text-[1.2rem] !leading-relaxed text-[var(--p-fg-muted)] !max-w-[92%]">
+<p v-click class="!mt-5 !text-[1.2rem] !leading-relaxed text-[var(--p-fg-muted)] !max-w-[92%]">
 The DRA driver and your platform team create these. App teams never write them by hand.
 </p>
 
@@ -570,8 +570,9 @@ spec:
   - cel:
       expression: |
         device.driver == "gpu.nvidia.com" &&
+        device.attributes["gpu.nvidia.com"].type == "gpu" &&
         device.capacity["gpu.nvidia.com"].memory
-          .isGreaterThan(quantity("40Gi"))
+          .compareTo(quantity("40Gi")) >= 0
 ```
 
 </div>
@@ -595,7 +596,8 @@ spec:
   devices:
   - name: gpu-0
     attributes:
-      productName: { string: "NVIDIA A100-SXM4-40GB" }
+      type: { string: "gpu" }
+      productName: { string: "NVIDIA A100-PCIE-40GB" }
       architecture: { string: "Ampere" }
     capacity:
       memory: { value: "40Gi" }
@@ -616,22 +618,34 @@ spec:
 creates the ResourceSlice for you on each GPU node; your platform team
 (or the driver Helm chart) creates the DeviceClass.
 
+The four YAMLs on this slide and the next are one consistent example
+(whole GPUs; MIG comes two slides later): the slice's gpu-0 is type gpu
+with 40Gi, so it matches the large-gpu class (>= 40Gi), and it is an
+Ampere card, so it also matches the template's extra filter.
+
 Left card: DeviceClass. Show the CEL syntax — workloads reference this
 by name to ask for "any device matching this expression." Same role as
-StorageClass. Capacity is namespaced by driver in CEL:
-device.capacity["gpu.nvidia.com"].memory. The NVIDIA driver already
+StorageClass. Attributes and capacity are namespaced by driver in CEL:
+device.attributes["gpu.nvidia.com"].type, device.capacity["gpu.nvidia.com"].memory.
+type == "gpu" matters: the same driver also publishes MIG devices.
+quantity()/compareTo() come from the Kubernetes CEL quantity library. The NVIDIA driver already
 ships three DeviceClasses (gpu.nvidia.com, mig.nvidia.com,
 vfio.gpu.nvidia.com); you add your own on top, e.g. one per MIG profile.
 
 Right card: ResourceSlice. Tell the audience the YAML is illustrative —
-the driver writes it, they read it via `kubectl get resourceslice`. The
-field shape (typed attribute wrappers, capacity values) follows the v1
-API but isn't the kind of YAML they'll ever paste into a file.
+the driver writes it, they read it via `kubectl get resourceslice`. In
+the slice the attributes are bare keys (type, productName) with typed
+wrappers; CEL reads them as device.attributes["gpu.nvidia.com"].X. The
+real slice has more attributes (uuid, driverVersion, cudaComputeCapability,
+PCI bus). The pool is per node, so usually one slice per GPU node.
 
 Sources:
-- K8s docs: kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation
-- DeviceClass CEL example with isGreaterThan: DoIt blog
-- Resource API kinds verified GA in resource.k8s.io/v1 (1.34 release blog)
+- NVIDIA DRA driver docs: dra-driver-nvidia-gpu.sigs.k8s.io/docs/reference/resourceslice-attributes/
+  (slice shape, attribute names, A100-PCIE-40GB example, 40Gi memory)
+- NVIDIA's own gpu.nvidia.com DeviceClass (Helm chart deviceclass-gpu.yaml):
+  device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'gpu'
+- CEL quantity library: kubernetes.io/docs/reference/using-api/cel/
+- Resource API kinds GA in resource.k8s.io/v1 (1.34 release blog)
 -->
 
 ---
@@ -640,8 +654,8 @@ Sources:
 
 <div class="zoom-wrap">
 
-<p v-click class="!mt-8 !text-[1.2rem] !leading-relaxed text-[var(--p-fg-muted)] !max-w-[92%]">
-These are what app teams actually write (or not, use Kro!). A one-off claim, or a template that stamps one out per workload.
+<p v-click class="!mt-6 !text-[1.2rem] !leading-relaxed text-[var(--p-fg-muted)] !max-w-[92%]">
+What app teams actually write: a one-off claim, or a template per workload.
 </p>
 
 
@@ -650,20 +664,20 @@ These are what app teams actually write (or not, use Kro!). A one-off claim, or 
 <div v-click class="gpu-card">
 
 <div class="gpu-caption">ResourceClaim</div>
-<p class="!mt-2 !text-[1.0rem] !leading-snug">A direct request. The pod references it from its <code>resourceClaims</code> field. Same shape as <code>PersistentVolumeClaim</code>.</p>
+<p class="!mt-2 !text-[1.0rem] !leading-snug">A direct request, like a <code>PersistentVolumeClaim</code>. Every pod that references it shares the same device.</p>
 
 ```yaml
 apiVersion: resource.k8s.io/v1
 kind: ResourceClaim
 metadata:
   name: shared-gpu
-  namespace: default
+  namespace: ml-team
 spec:
   devices:
     requests:
     - name: gpu
       exactly:
-        deviceClassName: gpu.nvidia.com
+        deviceClassName: large-gpu
         count: 1
 ```
 
@@ -678,21 +692,21 @@ spec:
 apiVersion: resource.k8s.io/v1
 kind: ResourceClaimTemplate
 metadata:
-  name: mig-large-template
-  namespace: mig-test
+  name: single-gpu
+  namespace: ml-team
 spec:
   spec:
     devices:
       requests:
-      - name: mig-large
+      - name: gpu
         exactly:
-          deviceClassName: mig.nvidia.com
+          deviceClassName: large-gpu
           count: 1
           selectors:
           - cel:
               expression: |
                 device.attributes["gpu.nvidia.com"]
-                  .profile == "3g.20gb"
+                  .architecture == "Ampere"
 ```
 
 </div>
@@ -712,20 +726,26 @@ form, which is what shared workloads actually use).
 
 Left: ResourceClaim. The .exactly wrapper is real in v1 — it discriminates
 against .firstAvailable (an ordered fallback list). For a baseline
-"give me one GPU", you nest deviceClassName + count under .exactly.
+"give me one GPU", you nest deviceClassName + count under .exactly. It
+points at the platform team's large-gpu class from the previous slide.
+A claim created up front and referenced by several pods gives them all
+the same device: that is how our demo shares one GPU later.
 
-Right: ResourceClaimTemplate. This YAML is verbatim from the customer's
-repo (infra/index.ts). Notice spec.spec: the outer spec is the
-template metadata, the inner spec is the claim spec that gets stamped
-out. The CEL selector pins the request to a specific MIG profile.
+Right: ResourceClaimTemplate. Notice spec.spec: the outer spec is the
+template, the inner spec is the claim that gets stamped out per pod.
+Same class, plus a claim-level CEL filter (architecture == "Ampere"):
+the class narrows what exists, the claim can narrow further. The pod
+references it via spec.resourceClaims[].resourceClaimTemplateName and
+containers[].resources.claims[].name.
 
 Sources:
-- ResourceClaimTemplate YAML lifted from this deck's own
-  infra/index.ts — proven to run on EKS 1.37 with
-  kubernetes-sigs/dra-driver-nvidia-gpu v0.5.1 (the successor to the
-  NVIDIA CalVer releases that ended at 25.12.0).
+- Template shape (single-gpu, spec.spec, exactly.deviceClassName) follows
+  NVIDIA's guide: dra-driver-nvidia-gpu.sigs.k8s.io/docs/guides/gpu-allocation/allocating-gpus/
+  and demo/specs/quickstart/v1/gpu-test1.yaml in kubernetes-sigs/dra-driver-nvidia-gpu.
 - ResourceClaim v1 schema (.exactly wrapper, .selectors[].cel.expression)
   per K8s 1.34 release blog and resource.k8s.io/v1 API reference.
+- The demo's real claim (shared-mig-claim, MIG) is in infra/index.ts and
+  shows up on the demo slides.
 
 firstAvailable (Prioritized list, GA in 1.36), if someone asks for
 fallbacks: instead of `exactly`, a request can list sub-requests in order
@@ -1230,7 +1250,134 @@ slices. That's the whole show. Source: infra/index.ts.
 
 ---
 
-# Why an inference gateway in front of the slices?
+# With MIG, every slice is a device.
+
+<div class="mig-dra">
+
+<p class="!mt-4 !text-[1.2rem] !leading-relaxed text-[var(--p-fg-muted)]">
+Same four objects as before. The driver just publishes smaller devices.
+</p>
+
+<div class="grid grid-cols-2 gap-6 mt-4">
+
+<div v-click class="gpu-card">
+
+<div class="gpu-caption">ResourceSlice: three slices, one GPU</div>
+
+```yaml
+# Published by the DRA driver.
+kind: ResourceSlice
+spec:
+  driver: gpu.nvidia.com
+  devices:
+  - name: gpu-0-mig-2g48gb-5-0
+    attributes:
+      type:       { string: "mig" }
+      profile:    { string: "2g.48gb" }
+      parentUUID: { string: "GPU-676c1adb-…" }
+  - name: gpu-0-mig-1g24gb-14-6
+    attributes:
+      type:       { string: "mig" }
+      profile:    { string: "1g.24gb" }
+      parentUUID: { string: "GPU-676c1adb-…" }
+  - name: gpu-0-mig-1g24gb-14-9   # 1g.24gb, same parent
+```
+
+</div>
+
+<div v-click class="gpu-card gpu-card--primary">
+
+<div class="gpu-caption gpu-caption--accent">ResourceClaim: three slices, same GPU</div>
+
+```yaml
+kind: ResourceClaim
+metadata: { name: shared-mig-claim }
+spec:
+  devices:
+    requests:
+    - name: mig-large                # training
+      exactly:
+        deviceClassName: mig.nvidia.com
+        selectors:
+        - cel:
+            expression: |
+              device.attributes["gpu.nvidia.com"]
+                .profile == "2g.48gb"
+    # mig-serve-a, mig-serve-b: same, "1g.24gb"
+    constraints:
+    - matchAttribute: gpu.nvidia.com/parentUUID
+      requests: [mig-large, mig-serve-a, mig-serve-b]
+```
+
+</div>
+
+</div>
+
+<p v-click class="!mt-5 !text-[1.35rem] !leading-snug">
+Each pod picks its slice: <code>resources.claims: [{ name: mig, request: mig-serve-a }]</code>. The scheduler finds three slices that share one <code>parentUUID</code>.
+</p>
+
+</div>
+
+<style scoped>
+.mig-dra :deep(pre) { font-size: 0.86rem !important; line-height: 1.38 !important; }
+</style>
+
+<!--
+~75s. The MIG version of the two DRA slides. Same objects, nothing new
+to learn: MIG just makes the driver publish smaller devices.
+
+Click 1, left: the ResourceSlice from our demo node (Nov 2 2026, RTX PRO
+6000, layout all-balanced). The driver publishes each MIG slice as its
+own device with type: mig, its profile, and parentUUID = the physical
+GPU it was cut from. Three slices, one parentUUID. (Trimmed: the real
+slice also has uuid, productName, capacity memory/multiprocessors/...)
+
+Click 2, right: our real claim from infra/index.ts, trimmed. Three
+requests, each pinned to a profile with CEL, all on NVIDIA's built-in
+mig.nvidia.com class (it selects type == 'mig'). The constraint
+matchAttribute: gpu.nvidia.com/parentUUID says "all three must share the
+same parent GPU". We never hardcode a UUID: the scheduler finds three
+slices that fit together.
+
+Click 3: how pods use it. Every pod references the same claim and picks
+its request by name. Training gets mig-large, vLLM A and B get the two
+1g slices. That's the whole trick behind "one GPU, three pods".
+
+Bridge from the earlier slides: the class still narrows (type == mig),
+the claim still narrows further (profile). In production you'd give
+each size its own DeviceClass (rollout slide, card 02), so teams write
+deviceClassName: mig-1g-24gb instead of CEL.
+
+Sources:
+- Device names, profiles, parentUUID: our demo cluster, Nov 2 2026
+  (also visible in the recorded demo). A rebuilt node gets a new UUID.
+- Claim: infra/index.ts (shared-mig-claim).
+- MIG slice shape and the mig.nvidia.com class selector:
+  dra-driver-nvidia-gpu.sigs.k8s.io/docs/reference/resourceslice-attributes/
+  and the chart template deviceclass-mig.yaml.
+- Same-GPU constraint pattern: NVIDIA's MIG guide, "Request multiple MIG
+  devices from the same GPU" (matchAttribute: gpu.nvidia.com/parentUUID).
+-->
+
+---
+
+<img class="divider-mascot" src="/brand/pulumipus-thinking.svg" alt="" aria-hidden="true" />
+
+<div class="absolute inset-0 flex flex-col justify-center items-center px-20 text-center">
+  <h1 class="!text-[7rem] !leading-tight !font-semibold !tracking-tight !m-0 !max-w-[95%]">
+    Why an <span class="text-[var(--p-primary)]">inference gateway</span>?
+  </h1>
+</div>
+
+<!--
+~5s. Divider. Ask it out loud, pause, click. The slices are scheduled;
+now the question is how requests reach the right one.
+-->
+
+---
+
+# One gateway, many slices.
 
 <div class="gw">
   <div class="gw-flow">
@@ -1248,12 +1395,12 @@ slices. That's the whole show. Source: infra/index.ts.
 
   <div class="gw-why">
     <div v-click class="gw-card">
-      <div class="gw-h">A Service round-robins blind.</div>
-      <p>kube-proxy can't see which replica is busy or already has the prompt cached. A 1g slice saturates fast, so a bad pick is a latency spike.</p>
+      <div class="gw-h">A Service balances blind.</div>
+      <p>kube-proxy picks a pod per connection, at random. It can't see which replica is busy. On a 1g slice, one bad pick is a latency spike.</p>
     </div>
     <div v-click class="gw-card">
-      <div class="gw-h">One URL, many slices.</div>
-      <p>Clients call one endpoint. A new replica on a free slice joins the pool by label. No client change.</p>
+      <div class="gw-h">The picker reads the slices.</div>
+      <p>Per request, llm-d's endpoint picker scores each vLLM replica on queue depth, KV-cache use and prefix-cache hits, then sends it to the best one.</p>
     </div>
     <div v-click class="gw-card">
       <div class="gw-h">Standard APIs, swappable parts.</div>
@@ -1294,12 +1441,20 @@ The EPP scores the pods on queue depth, KV-cache use and prefix-cache
 hits, and the gateway forwards to the winner. Each vLLM replica sits on
 its own 1g MIG slice and serves Qwen3-8B in FP8.
 
-Why:
-- A plain Service is kube-proxy round-robin. It doesn't know a replica
-  is busy or that another one already has the prompt prefix cached. On a
-  small slice a bad pick shows up straight away as latency.
-- One endpoint for clients. Scale out on another slice and the pool
-  picks the pod up by label selector.
+Why, as one argument (default is blind -> the gateway sees -> it's standard):
+- A Service balances blind. kube-proxy (iptables/nftables mode, the
+  default) picks a backend at random when the connection opens, not per
+  request. LLM clients keep HTTP connections alive, so one client can
+  stick to one replica. It sees no load, no cache. On a small 1g slice a
+  bad pick shows up straight away as latency. (IPVS mode can round-robin,
+  but still per connection and still blind.)
+- The picker reads the slices. Per request, the EPP scores each replica
+  on queue depth, KV-cache utilization and prefix-cache hits and the
+  gateway forwards to the best one. Clients still call one URL; a new
+  replica on a free slice joins the InferencePool by label.
+- Caveat from our own load tests: prefix-cache scoring pins identical
+  prompts to the replica that already has them cached. Load-test with
+  varied prompts or one replica runs hot while the other idles.
 - Standard APIs: Gateway API + the Inference Extension (InferencePool,
   v1.6.2). The EPP is the llm-d router. agentgateway is swappable for any
   conformant gateway (Envoy Gateway, kgateway, GKE, Istio).
@@ -1738,18 +1893,18 @@ Image source: preview.redd.it (Reddit upload), saved locally.
 
 <ul class="ladder">
   <li><span class="rung">Fits a slice</span> MIG + DRA. Everything you saw today.</li>
-  <li><span class="rung">Fits one node</span> Whole GPUs. vLLM splits each layer across them, ideally over NVLink.</li>
+  <li><span class="rung">Fits one node</span> Whole GPUs. vLLM cuts every layer into pieces, one per GPU (tensor parallelism), ideally over NVLink.</li>
   <li><span class="rung">Bigger than that</span> Two patterns:</li>
 </ul>
 
 <div class="big grid grid-cols-2 gap-6 mt-3">
 
-<div class="gpu-card">
+<div v-click class="gpu-card">
   <div class="gpu-caption gpu-caption--accent">Bigger than one node</div>
 
 ```mermaid {look: 'handDrawn', theme: 'base', scale: 0.9, themeVariables: {fontFamily: 'Inter, sans-serif', fontSize: '19px', primaryColor: '#241c45', primaryBorderColor: '#9077f3', primaryTextColor: '#e9e7ff', lineColor: '#c3bdff', clusterBkg: 'transparent', clusterBorder: '#6b5bb5', edgeLabelBackground: '#1b1630', titleColor: '#c3bdff'}}
 flowchart LR
-  R(["llm-d<br/>router"]) --> L
+  R(["Service<br/>(leader)"]) --> L
   subgraph G["LeaderWorkerSet: one group"]
     L["Leader pod<br/>node A: 8 GPUs<br/>layers 1 to n/2"]
     W["Worker pod<br/>node B: 8 GPUs<br/>layers n/2 to n"]
@@ -1766,7 +1921,7 @@ flowchart LR
 </div>
 
 <div v-click class="gpu-card gpu-card--accent">
-  <div class="gpu-caption gpu-caption--accent">Frontier MoE models</div>
+  <div class="gpu-caption gpu-caption--accent">Frontier Mixture-of-Experts (MoE) models</div>
 
 ```mermaid {look: 'handDrawn', theme: 'base', scale: 0.9, themeVariables: {fontFamily: 'Inter, sans-serif', fontSize: '19px', primaryColor: '#241c45', primaryBorderColor: '#9077f3', primaryTextColor: '#e9e7ff', lineColor: '#c3bdff', clusterBkg: 'transparent', clusterBorder: '#6b5bb5', edgeLabelBackground: '#1b1630', titleColor: '#c3bdff'}}
 flowchart LR
@@ -1789,13 +1944,6 @@ flowchart LR
 
 </div>
 
-<p class="!mt-4 !mb-0 !text-[1.2rem] !font-semibold">
-  Same building blocks: DRA, InferencePool, llm-d. Bigger hardware.
-</p>
-<p class="!mt-1 !text-[0.95rem] text-[var(--p-fg-muted)]">
-  LWS: <a href="https://github.com/kubernetes-sigs/lws" target="_blank">github.com/kubernetes-sigs/lws</a> · KServe: <code>LLMInferenceService</code> has LWS built in. Set <code>spec.worker</code> and it creates the group for you.
-</p>
-
 <style scoped>
 .ladder { margin: 0.6rem 0 0 0 !important; padding: 0 !important; list-style: none; }
 .ladder li { margin: 0.55rem 0 !important; font-size: 1.4rem; display: flex; align-items: baseline; gap: 0.8rem; }
@@ -1811,7 +1959,7 @@ flowchart LR
 
 <!--
 75s. The honest answer to "this is just a demo". Walk the three ladder
-lines in one breath, then the left card, click, the right card.
+lines in one breath, then click for the left card, click for the right card.
 
 Ladder:
 - Fits one GPU or a slice: run copies. vLLM docs: "if the model fits on
@@ -1819,7 +1967,7 @@ Ladder:
 - Fits one node: tensor_parallel_size = GPUs in the node. Wants NVLink;
   on cards without it (L40S) vLLM recommends pipeline parallel instead.
 
-Left card (LWS v1.0.0, Oct 16 2026). This is the official LWS vLLM
+Left card (click). (LWS v1.0.0, Oct 16 2026). This is the official LWS vLLM
 example, not our invention: Llama-3.1-405B-Instruct, size 2 (leader +
 1 worker), 8 GPUs each, --tensor-parallel-size 8
 --pipeline-parallel-size 2, restartPolicy RecreateGroupOnPodRestart
@@ -1827,6 +1975,10 @@ example, not our invention: Llama-3.1-405B-Instruct, size 2 (leader +
 own multiprocessing backend (--nnodes / --node-rank); Ray is optional.
 vLLM docs: cross-node traffic "preferably" over InfiniBand + GPUDirect
 RDMA; NCCL logging "via NET/Socket" means slow TCP.
+Exposed the way the official example does it: a plain ClusterIP Service
+(vllm-leader) that targets the leader pods. No router or InferencePool
+in that example, and llm-d doesn't document routing to multi-node LWS
+groups, so the diagram starts with the Service, not llm-d.
 
 Right card (click). llm-d 1.0 (Oct 20 2026) wide-EP guide. The router
 (EPP) picks a decode pod AND a prefill pod. The request goes to the
@@ -1837,12 +1989,18 @@ the decider skips prefill. Default: DeepSeek-R1-0528, prefill DP16 +
 decode DP16 (two nodes each) on 32 H200, DeepEP all-to-all; validated
 nightly on InfiniBand (CoreWeave) and RoCE (GKE). llm-d: without RDMA
 "NIXL falls back to TCP ... only for testing and development."
+Deployment (llm-d wide-EP guide, re-checked Nov 10): on NVIDIA and AMD it
+is "a single DisaggregatedSet that manages the prefill and decode
+LeaderWorkerSets as one versioned unit" (Intel XPU uses two plain LWS).
+Needs the LWS controller v0.11.1+ with enableDisaggregatedSet=true. The
+router's InferencePool targets every data-parallel rank, so it picks a
+DP rank, not just a pod.
 llm-d's DeepSeek-V4-Pro recipe runs on GB200 NVL72 (16 to 56 GPUs); its
 cross-node NVLink comes from a ComputeDomain of the NVIDIA DRA driver,
 the same dra-driver-nvidia-gpu we run for MIG (v0.5.1 ships
 ComputeDomain fixes).
 
-Footer: KServe v0.21 LLMInferenceService creates a LeaderWorkerSet when
+Q&A (was the footer): KServe v0.21 LLMInferenceService creates a LeaderWorkerSet when
 you set spec.worker (and per role for prefill/decode); KServe's
 dependency installer installs the LWS controller. DisaggregatedSet
 support is on KServe main, not in v0.21.
@@ -1856,6 +2014,9 @@ about one 2g slice anyway: take the bigger slice.
 Sources:
 - docs.vllm.ai/en/latest/serving/parallelism_scaling.html
 - github.com/kubernetes-sigs/lws (README, docs/examples/leaderworkerset/basic/vllm.yaml)
+- lws.sigs.k8s.io/stable/docs/examples/leaderworkerset/basic/ (vllm.yaml, vllm-leader Service)
+- lws.sigs.k8s.io/docs/concepts/disaggregatedset/ (KEP-766)
+- llm-d.ai/docs/well-lit-paths/foundations/wide-expert-parallelism
 - github.com/llm-d/llm-d: guides/wide-ep, guides/pd-disaggregation,
   guides/models/deepseek-v4, docs/architecture/disaggregation/pd-disaggregation.md
 - github.com/kserve/kserve: pkg/controller/v1alpha2/llmisvc/workload_multi_node.go (v0.21.0)
@@ -2289,7 +2450,7 @@ Pause here, then click into the open-source slide.
 
 ---
 
-# It's open source. Lift it.
+# It's open source.
 
 <div class="os">
   <div class="os-qr">
